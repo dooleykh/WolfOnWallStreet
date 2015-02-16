@@ -1,9 +1,12 @@
+use std::sync::mpsc::{Sender, Receiver};
+
 // Messages to a Market
 pub enum MarketMessages {
   SellRequest(TransactionRequest),
   BuyRequest(TransactionRequest),
   Commit(usize), //Id of the actor
   Cancel(usize), //Id of the actor
+  RegisterActor(usize, Sender<usize>), //Actor's id, transmit channel
 
   MatchRequest(TransactionRequest, TransactionRequest) // (Buyer's Request, Seller's Request)
 }
