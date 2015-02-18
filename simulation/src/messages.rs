@@ -23,15 +23,19 @@ pub enum ActorMessages {
 pub enum TellerMessages {
   SellRequest(TransactionRequest),
   BuyRequest(TransactionRequest),
+  RevokeRequest(usize, usize) //actor_id, transaction_id (unique to a single actor)
 }
 
+#[derive(Clone)]
 pub struct TransactionRequest {
+  pub transaction_id: usize,
   pub actor_id: usize, //Id of Actor initiating the request
   pub stock_id: usize,
   pub price: usize,
   pub quantity: usize
 }
 
+#[derive(Clone)]
 pub struct StockRequest {
   pub stock_id: usize,
   pub quantity: usize,

@@ -3,11 +3,11 @@ use std::sync::mpsc::{Sender, Receiver};
 
 use messages::*;
 
-pub struct Market {
-  pub tellers: HashMap<String, Sender<TellerMessages>>,
-  pub actors: HashMap<usize, Sender<usize>>, //TODO: change to ActorMessages after testing
-  pub active_transactions: Vec<(TransactionRequest, TransactionRequest)>,
-  pub pending_transactions: Vec<(TransactionRequest, TransactionRequest)>,
+struct Market {
+  tellers: HashMap<usize, Sender<TellerMessages>>,
+  actors: HashMap<usize, Sender<usize>>, //TODO: change to ActorMessages after testing
+  active_transactions: Vec<(TransactionRequest, TransactionRequest)>,
+  pending_transactions: Vec<(TransactionRequest, TransactionRequest)>,
 }
 
 //Called on a new thread
