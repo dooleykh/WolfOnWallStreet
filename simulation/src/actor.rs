@@ -24,16 +24,18 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                           pending_stock: (0, 0),
                           markets: existing_markets};
 
-  let (actor_tx, actor_rx): (Sender<usize>, Receiver<usize>) = channel();
+  let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
   for (name, market_tx) in actor.markets.iter() {
     market_tx.send(MarketMessages::RegisterActor(actor.id, actor_tx.clone()));
+    let transaction = TransactionRequest{actor_id: actor_id, transaction_id: 0, stock_id: 0, price: 100, quantity: 1};
+    market_tx.send(MarketMessages::BuyRequest(transaction));
   }
 
   loop {
     //Logic
 
     match actor_rx.try_recv() {
-      Ok(id) => {println!("Actor {} received {}", actor.id, id);},
+      Ok(id) => {}, //{println!("Actor {} received {}", actor.id, id);},
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
