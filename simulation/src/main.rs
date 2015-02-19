@@ -14,9 +14,6 @@ pub mod teller;
 use teller::*;
 
 fn main() {
-  let sr = StockRequest {stock_id: 0, quantity: 1};
-  println!("ID: {}, Quantity: {}", sr.stock_id, sr.quantity);
-
   //tx: clone for actors        rx: owned by market
   let (tx_market, rx_market): (Sender<MarketMessages>, Receiver<MarketMessages>) = channel();
 

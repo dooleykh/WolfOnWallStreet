@@ -14,7 +14,7 @@ pub enum MarketMessages {
 // Messages from a Market to an Actor
 pub enum ActorMessages {
   StockRequest(StockRequest),
-  MoneyRequest(usize), //The amount of money needed to buy the stock(s)
+  MoneyRequest(MoneyRequest), //The amount of money needed to buy the stock(s)
   CommitTransaction(TransactionRequest), //The information related to the transaction
   AbortTransaction,
 }
@@ -37,6 +37,13 @@ pub struct TransactionRequest {
 
 #[derive(Clone)]
 pub struct StockRequest {
+  pub market_id: usize,
   pub stock_id: usize,
   pub quantity: usize,
+}
+
+#[derive(Clone)]
+pub struct MoneyRequest {
+  pub market_id: usize,
+  pub amount: usize,
 }

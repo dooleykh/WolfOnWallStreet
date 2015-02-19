@@ -37,7 +37,15 @@ pub fn start_market(market_tx: Sender<MarketMessages>, market_rx: Receiver<Marke
         MarketMessages::Commit(actor_id) => {},
         MarketMessages::Cancel(actor_id) => {},
         MarketMessages::RegisterActor(actor_id, actor_tx) => {
-          exchange.actors.insert(actor_id, actor_tx);},
+          let temp_clone = actor_tx.clone();
+          exchange.actors.insert(actor_id, actor_tx);
+          //TODO REMOVE THE FOLLOWING
+          let tRequest = TransactionRequest { transaction_id: 0,
+                                              actor_id: 0,
+                                              stock_id: 1,
+                                              price: 10,
+                                              quantity: 5};
+          temp_clone.send(ActorMessages::CommitTransaction(tRequest));},
         MarketMessages::MatchRequest(buyer, sender) => {},
     }
   }
