@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::{Arc, Mutex};
 use std::thread::Thread;
 use std::cmp;
 
@@ -13,17 +14,20 @@ struct Market {
   active_transactions: Vec<(TransactionRequest, TransactionRequest)>,
   pending_transactions: Vec<(TransactionRequest, TransactionRequest)>,
   committed_actors: Vec<usize>,
+  history: Arc<Mutex<MarketHistory>>
 }
 
 //Called on a new thread
 pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_rx: Receiver<MarketMessages>) {
   //Create Market struct
+  let mut initial_history = Mutex::new(MarketHistory {history: vec![]});
   let mut market = Market {id:market_id,
                              tellers: HashMap::new(),
                              actors: HashMap::new(),
                              active_transactions: vec![],
                              committed_actors: vec![],
-                             pending_transactions: vec![]};
+                             pending_transactions: vec![],
+                             history: Arc::new(initial_history)};
   //TODO: Initialize Tellers
   for i in 0..1 {
     let (tx, rx): (Sender<TellerMessages>, Receiver<TellerMessages>) = channel();
@@ -36,6 +40,7 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   //Start the receive loop
   loop {
     let message = market_rx.recv().unwrap();
+    println!("In market: history is {}", *(market.history.lock().unwrap()));
     match message {
         MarketMessages::SellRequest(request) => {route(false, request, &market)},
         MarketMessages::BuyRequest(request) => {route(true, request, &market)},
@@ -51,9 +56,9 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
 
               route_actor_message(&market, tup.0.actor_id, ActorMessages::CommitTransaction(tup.1.clone()));
               route_actor_message(&market, tup.1.actor_id, ActorMessages::CommitTransaction(tup.0.clone()));
-
               remove_active_transaction(&mut market, &tup);
               move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
+              market.history.lock().unwrap().history.push(tup);
             }
           }
         }
@@ -72,7 +77,8 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
           },
         MarketMessages::RegisterActor(actor_id, actor_tx) => {
           let temp_clone = actor_tx.clone();
-          market.actors.insert(actor_id, actor_tx);},
+          market.actors.insert(actor_id, temp_clone);
+          actor_tx.send(ActorMessages::History(market.history.clone()));},
         MarketMessages::MatchRequest(mut buyer, mut seller) => {
           if has_active_transaction(&market, buyer.actor_id) || has_active_transaction(&market, seller.actor_id) {
             //add to pending transactions

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::sync::mpsc::TryRecvError;
+use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
 
@@ -14,12 +15,15 @@ their prices and instead only want to get their stock out into the market.
 
 pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, stock_id: usize, starting_quantity: usize) {
   println!("Starting Corporate Actor {}", actor_id);
+  let start_history = Arc::new(Mutex::new(MarketHistory {history: vec![]}));
+  let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
                           pending_money: 0,
                           pending_stock: (0, 0),
-                          markets: existing_markets};
+                          markets: existing_markets,
+                          history: start_history};
   actor.stocks.insert(stock_id, starting_quantity);
   let mut next_transaction_id = 0;
 
@@ -160,7 +164,11 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                 actor.pending_money = 0;
               }
               println!("After aborting the transaction, corporate actor {} now has {} money.", actor.id, actor.money);
-            }
+            },
+            ActorMessages::History(history) => {
+              println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              actor.history = history;
+              init_history = true;}
           }
         }, //{println!("Actor {} received {}", actor.id, id);},
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},

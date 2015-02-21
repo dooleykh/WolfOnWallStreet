@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::sync::mpsc::TryRecvError;
+use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
 
@@ -12,17 +13,21 @@ pub struct Actor {
   pub stocks: HashMap<usize, usize>,
   pub pending_money: usize,
   pub pending_stock: (usize, usize), //Stock, quantity
-  pub markets: HashMap<usize, Sender<MarketMessages>>
+  pub markets: HashMap<usize, Sender<MarketMessages>>,
+  pub history: Arc<Mutex<MarketHistory>>
 }
 
 pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>) {
   println!("Starting Actor {}", actor_id);
+  let start_history = Arc::new(Mutex::new(MarketHistory {history: vec![]}));
+  let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
                           pending_money: 0,
                           pending_stock: (0, 0),
-                          markets: existing_markets};
+                          markets: existing_markets,
+                          history: start_history};
 
   let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
   for (name, market_tx) in actor.markets.iter() {
@@ -153,12 +158,17 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                 actor.pending_money = 0;
               }
               println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
-            }
+            },
+            ActorMessages::History(history) => {
+              println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              actor.history = history;
+              init_history = true;}
           }
-        }, //{println!("Actor {} received {}", actor.id, id);},
+        },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
+    println!("Actor {} history predicate says length is {}", actor.id, actor.history.lock().unwrap().len());
   }
 }
 

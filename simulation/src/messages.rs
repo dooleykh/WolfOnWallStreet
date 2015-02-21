@@ -1,4 +1,6 @@
 use std::sync::mpsc::{Sender, Receiver};
+use std::sync::{Arc, Mutex};
+use std::fmt;
 
 // Messages to a Market
 pub enum MarketMessages {
@@ -17,6 +19,7 @@ pub enum ActorMessages {
   MoneyRequest(MoneyRequest), //The amount of money needed to buy the stock(s)
   CommitTransaction(TransactionRequest), //The information related to the transaction
   AbortTransaction,
+  History(Arc<Mutex<MarketHistory>>)
 }
 
 // Messages from a Market to a Teller
@@ -46,4 +49,20 @@ pub struct StockRequest {
 pub struct MoneyRequest {
   pub market_id: usize,
   pub amount: usize,
+}
+
+pub struct MarketHistory {
+  pub history: Vec<(TransactionRequest, TransactionRequest)>
+}
+
+impl fmt::Display for MarketHistory {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "History length is {}", self.history.len())
+  }
+}
+
+impl MarketHistory {
+  pub fn len(&self) -> usize {
+    self.history.len()
+  }
 }

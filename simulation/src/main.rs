@@ -39,5 +39,5 @@ fn main() {
     Thread::spawn(move || {corporate_actor::start_corporate_actor(id, m, 0, 100);});//start a corporate actor with 100 of stock 0
   }
 
-  timer::sleep(Duration::milliseconds(5000));
+  timer::sleep(Duration::milliseconds(10000));
 }
