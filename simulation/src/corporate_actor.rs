@@ -5,36 +5,43 @@ use std::old_io::timer;
 use std::time::Duration;
 
 use messages::*;
+use actor::Actor;
 
-pub struct Actor {
-  pub id: usize,
-  pub money: usize,
-  pub stocks: HashMap<usize, usize>,
-  pub pending_money: usize,
-  pub pending_stock: (usize, usize), //Stock, quantity
-  pub markets: HashMap<usize, Sender<MarketMessages>>
-}
+/*
+This is a corporate actor. Their only desire is to sell stocks. They do not adjust
+their prices and instead only want to get their stock out into the market.
+*/
 
-pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>) {
-  println!("Starting Actor {}", actor_id);
+pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, stock_id: usize, starting_quantity: usize) {
+  println!("Starting Corporate Actor {}", actor_id);
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
                           pending_money: 0,
                           pending_stock: (0, 0),
                           markets: existing_markets};
+  actor.stocks.insert(stock_id, starting_quantity);
+  let mut next_transaction_id = 0;
 
   let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
   for (name, market_tx) in actor.markets.iter() {
     market_tx.send(MarketMessages::RegisterActor(actor.id, actor_tx.clone()));
-
-    //TODO Remove automatic buy request transmission.
-    let transaction = TransactionRequest{actor_id: actor_id, transaction_id: 0, stock_id: 0, price: 100, quantity: 10};
-    market_tx.send(MarketMessages::BuyRequest(transaction));
   }
 
   loop {
     //Logic
+    if (actor.pending_stock.1 == 0) {
+      for (stock_id, quantity) in actor.stocks.iter() {
+        if (*quantity > 0) {
+          for (name, market_tx) in actor.markets.iter() {
+            let transaction = TransactionRequest{actor_id: actor_id, transaction_id: next_transaction_id, stock_id: *stock_id, price: 10, quantity: *quantity / actor.markets.len()};
+            market_tx.send(MarketMessages::SellRequest(transaction));
+          }
+        }
+      }
+    }
+
+
     let mark_clone = actor.markets.clone();
     let stock_clone = actor.stocks.clone();
 
@@ -42,7 +49,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
       Ok(message) => {
           match message {
             ActorMessages::StockRequest(stock_request) => {
-              println!("Started Stock Request in actor {}", actor.id);
+              println!("Started Stock Request in corporate actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -132,7 +139,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              println!("After a committed transaction in actor {} ", actor.id);
+              println!("After a committed transaction in corporate actor {} ", actor.id);
               print_status(&actor);
               },
             ActorMessages::AbortTransaction => {
@@ -144,7 +151,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
               for (stock_id, quantity) in actor.stocks.iter() {
-                println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+                println!("After aborting the transaction, corporate actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
               }
 
               //move pending money back into money.
@@ -152,7 +159,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
+              println!("After aborting the transaction, corporate actor {} now has {} money.", actor.id, actor.money);
             }
           }
         }, //{println!("Actor {} received {}", actor.id, id);},
@@ -191,9 +198,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("Corporate Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Actor {} has {} money.", (*actor).id, (*actor).money);
+  println!("Corporate Actor {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

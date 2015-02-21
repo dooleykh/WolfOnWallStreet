@@ -22,7 +22,8 @@ pub fn start_teller(teller_id: usize, market_tx: Sender<MarketMessages>, teller_
       TellerMessages::SellRequest(request) => {teller.sell_requests.push(request.clone());
                                               match make_sell_request(&mut teller) {
                                                 Some(buy) => {market_tx.send(MarketMessages::MatchRequest(buy, request));}
-                                                None => {} }},
+                                                None => {} };
+                                              println!("RECEIVED SELL REQUEST")},
       TellerMessages::RevokeRequest(actor_id, transaction_id) => {revoke(actor_id, transaction_id, &mut teller);}
     }
   }

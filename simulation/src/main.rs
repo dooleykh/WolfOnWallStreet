@@ -12,6 +12,8 @@ pub mod actor;
 use actor::*;
 pub mod teller;
 use teller::*;
+pub mod corporate_actor;
+use corporate_actor::*;
 
 fn main() {
   //tx: clone for actors        rx: owned by market
@@ -25,9 +27,16 @@ fn main() {
   let mut markets = HashMap::new();
   markets.insert(0, tx_market.clone());
 
-  for id in 0..10 {
+  let standard_actor_count = 5;
+  let corporate_actor_count = 1;
+  //TODO make more stocks and add history so actors can query on it.
+  for id in 0..standard_actor_count {
     let m = markets.clone();
     Thread::spawn(move || {actor::start_actor(id, m);});
+  }
+  for id in standard_actor_count..standard_actor_count+corporate_actor_count {
+    let m = markets.clone();
+    Thread::spawn(move || {corporate_actor::start_corporate_actor(id, m, 0, 100);});//start a corporate actor with 100 of stock 0
   }
 
   timer::sleep(Duration::milliseconds(5000));
