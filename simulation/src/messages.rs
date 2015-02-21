@@ -26,7 +26,7 @@ pub enum TellerMessages {
   RevokeRequest(usize, usize) //actor_id, transaction_id (unique to a single actor)
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct TransactionRequest {
   pub transaction_id: usize,
   pub actor_id: usize, //Id of Actor initiating the request

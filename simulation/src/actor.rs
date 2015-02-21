@@ -33,17 +33,18 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
     market_tx.send(MarketMessages::BuyRequest(transaction));
   }
 
-  actor.pending_stock = (1, 10);
-
   loop {
     //Logic
+    let mark_clone = actor.markets.clone();
+    let stock_clone = actor.stocks.clone();
 
     match actor_rx.try_recv() {
       Ok(message) => {
           match message {
             ActorMessages::StockRequest(stock_request) => {
+              println!("Started Stock Request in actor {}", actor.id);
               let market_tx;
-              let tx_text = actor.markets.get(&stock_request.market_id);
+              let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
                 Some(tx) => {
                   market_tx = tx;
@@ -52,16 +53,31 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                   return; //HOW DID WE GET A MISSING MARKET?
                 }
               }
-
-              if (has_pending_transaction(&actor)) {
+              if has_pending_transaction(&actor) {
                 market_tx.send(MarketMessages::Cancel(actor.id));
               }
               else {
                 //if we have the stock. set it aside.
-                //if we don't. cancel as well.
-
+                let stock_id = stock_request.stock_id;
+                let quantity = stock_request.quantity;
+                let stock = stock_clone.get(&stock_id);
+                match stock {
+                  Some(owned_quantity) => {
+                    if *owned_quantity >= quantity {
+                      remove_stock(&mut actor, (stock_id, quantity));
+                      actor.pending_stock = (stock_id, quantity);
+                      market_tx.send(MarketMessages::Commit(actor.id));
+                    }
+                    else {
+                      market_tx.send(MarketMessages::Cancel(actor.id));
+                    }
+                  },
+                  None => {
+                    market_tx.send(MarketMessages::Cancel(actor.id));
+                  }
+                }
               }
-
+              print_status(&actor);
               },
             ActorMessages::MoneyRequest(money_request) => {
               let market_tx;
@@ -74,18 +90,26 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                   return; //HOW DID WE GET A MISSING MARKET?
                 }
               }
-              if (has_pending_transaction(&actor)) {
+              if has_pending_transaction(&actor) {
                 market_tx.send(MarketMessages::Cancel(actor.id));
               }
               else {
                 //if we have the money. set it aside.
-                //if we don't. cancel as well.
+                if actor.money >= money_request.amount {
+                  actor.money = actor.money - money_request.amount;
+                  actor.pending_money = money_request.amount;
+                  market_tx.send(MarketMessages::Commit(actor.id));
+                }
+                else {
+                  market_tx.send(MarketMessages::Cancel(actor.id));
+                }
               }
+              print_status(&actor);
               },
             ActorMessages::CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
-              if (actor.pending_money > 0) {
+              if actor.pending_money > 0 {
                 let price_per_unit = commit_transaction_request.price;
                 let units = commit_transaction_request.quantity;
                 let leftover_money = actor.pending_money - price_per_unit * units;
@@ -99,10 +123,10 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
 
               //if we have stock pending, look up the quantity purchased and add the money.
               //remove the pending stock
-              if (actor.pending_stock.1 > 0) {
+              if actor.pending_stock.1 > 0 {
                 let money = commit_transaction_request.price * commit_transaction_request.quantity;
                 let restore_stock = (commit_transaction_request.stock_id, actor.pending_stock.1 - commit_transaction_request.quantity);
-                if (restore_stock.1 > 0) {
+                if restore_stock.1 > 0 {
                   add_stock(&mut actor, restore_stock);
                 }
                 actor.money = actor.money + money;
@@ -113,7 +137,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               },
             ActorMessages::AbortTransaction => {
               //move pending stock back into stocks.
-              if (actor.pending_stock.1 != 0) {
+              if actor.pending_stock.1 != 0 {
                 let pending_stock_clone = actor.pending_stock.clone();
                 add_stock(&mut actor, pending_stock_clone);
                 //now that we have moved it. Clear out the pending stock.
@@ -124,7 +148,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               }
 
               //move pending money back into money.
-              if (actor.pending_money > 0) {
+              if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
@@ -144,13 +168,24 @@ fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
   match held_stock {
     Some(stock_count) => {
         //we have some stock. We need to add to our reserve.
-        actor.stocks.remove(&stock_to_add.1);
         actor.stocks.insert(stock_to_add.0, stock_to_add.1 + *stock_count);
       },
     None => {
       //we don't have any stock left. Just add it back.
       actor.stocks.insert(stock_to_add.0, stock_to_add.1);
     }
+  }
+}
+
+fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
+  let stock_clone = actor.stocks.clone();
+  let held_stock = stock_clone.get(&stock_to_remove.0);
+  match held_stock {
+    Some(stock_count) => {
+        //we have some stock. We need to add to our reserve.
+        actor.stocks.insert(stock_to_remove.0, *stock_count - stock_to_remove.1);
+      },
+    None => {} //TODO Should we error handle here?
   }
 }
 

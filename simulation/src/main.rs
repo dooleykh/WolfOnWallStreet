@@ -17,9 +17,10 @@ fn main() {
   //tx: clone for actors        rx: owned by market
   let (tx_market, rx_market): (Sender<MarketMessages>, Receiver<MarketMessages>) = channel();
 
+  //TODO: with spawning multiple markets make this a for loop.
   let tx_market_clone = tx_market.clone();
   Thread::spawn(move || {
-    market::start_market(tx_market_clone, rx_market);});
+    market::start_market(0, tx_market_clone, rx_market);});
 
   let mut markets = HashMap::new();
   markets.insert(0, tx_market.clone());
