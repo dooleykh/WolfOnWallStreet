@@ -52,8 +52,8 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
               route_actor_message(&market, tup.0.actor_id, ActorMessages::CommitTransaction(tup.1.clone()));
               route_actor_message(&market, tup.1.actor_id, ActorMessages::CommitTransaction(tup.0.clone()));
 
-              remove_active_transaction(&mut market, tup);
-              //TODO: Move Pending Transaction to Active and notify the actors.
+              remove_active_transaction(&mut market, &tup);
+              move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
             }
           }
         }
@@ -65,10 +65,9 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
             route_actor_message(&market, tup.1.actor_id, ActorMessages::AbortTransaction);
 
             //remove it from active
-            remove_active_transaction(&mut market, tup);
+            remove_active_transaction(&mut market, &tup);
 
-            //TODO: Move Pending Transaction to Active and notify for the actors that we just
-            //aborted.
+            move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
           }
           },
         MarketMessages::RegisterActor(actor_id, actor_tx) => {
@@ -80,20 +79,64 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
             market.pending_transactions.push((buyer, seller));
           }
           else {
-            //add to active transactions and notify both.
-            buyer.price = seller.price;
-            let smaller_quantity = cmp::min(seller.quantity, buyer.quantity);
-            buyer.quantity = smaller_quantity;
-            seller.quantity = smaller_quantity;
-            let amount_to_pay = buyer.quantity * buyer.price;
-            let buyer_request = MoneyRequest {market_id: market.id, amount: amount_to_pay};
-            let seller_request = StockRequest {market_id: market.id, stock_id: seller.stock_id, quantity: seller.quantity};
-
-            route_actor_message(&market, buyer.actor_id, ActorMessages::MoneyRequest(buyer_request));
-            route_actor_message(&market, seller.actor_id, ActorMessages::StockRequest(seller_request));
-            market.active_transactions.push((buyer, seller));
+            activate_transactions(&mut market, buyer, seller);
           }
           },
+    }
+  }
+}
+
+fn activate_transactions(market: &mut Market, mut buyer: TransactionRequest, mut seller: TransactionRequest) {
+  //add to active transactions and notify both.
+  buyer.price = seller.price;
+  let smaller_quantity = cmp::min(seller.quantity, buyer.quantity);
+  buyer.quantity = smaller_quantity;
+  seller.quantity = smaller_quantity;
+  let amount_to_pay = buyer.quantity * buyer.price;
+  let buyer_request = MoneyRequest {market_id: market.id, amount: amount_to_pay};
+  let seller_request = StockRequest {market_id: market.id, stock_id: seller.stock_id, quantity: seller.quantity};
+
+  route_actor_message(&market, buyer.actor_id, ActorMessages::MoneyRequest(buyer_request));
+  route_actor_message(&market, seller.actor_id, ActorMessages::StockRequest(seller_request));
+  market.active_transactions.push((buyer, seller));
+}
+
+fn move_pending_to_active(market: &mut Market, actor1: usize, actor2: usize) {
+  //actor 1
+  for i in 0..market.pending_transactions.len() {
+    let pending_transaction = market.pending_transactions[i].clone();
+    if (pending_transaction.0.actor_id == actor1) {
+      if !has_active_transaction(&market, pending_transaction.1.actor_id) {
+        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        remove(&mut market.pending_transactions, pending_transaction);
+        break;
+      }
+    }
+    if (pending_transaction.1.actor_id == actor1) {
+      if !has_active_transaction(&market, pending_transaction.0.actor_id) {
+        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        remove(&mut market.pending_transactions, pending_transaction);
+        break;
+      }
+    }
+  }
+
+  //actor 2
+  for i in 0..market.pending_transactions.len() {
+    let pending_transaction = market.pending_transactions[i].clone();
+    if (pending_transaction.0.actor_id == actor2) {
+      if !has_active_transaction(&market, pending_transaction.1.actor_id) {
+        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        remove(&mut market.pending_transactions, pending_transaction);
+        break;
+      }
+    }
+    if (pending_transaction.1.actor_id == actor2) {
+      if !has_active_transaction(&market, pending_transaction.0.actor_id) {
+        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        remove(&mut market.pending_transactions, pending_transaction);
+        break;
+      }
     }
   }
 }
@@ -116,7 +159,7 @@ fn contains<T:PartialEq>(vec: &Vec<T>, element: T) -> bool {
   false
 }
 
-fn remove_active_transaction(market: &mut Market, tup: (TransactionRequest, TransactionRequest)) {
+fn remove_active_transaction(market: &mut Market, tup: &(TransactionRequest, TransactionRequest)) {
   for i in 0..market.active_transactions.len() {
     let test_active = market.active_transactions[i].clone();
     if  test_active.0 == tup.0 && test_active.1 == tup.1 {
