@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
-use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor, MatchRequest};
+use messages::MarketMessages::{BuyRequest, SellRequest, Commit, Cancel, RegisterActor, MatchRequest};
 use actor::Actor;
 
 // Smarter actor
@@ -26,7 +26,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                           history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))
                           };
   // Stocks = HashMap<market_id, HashMap<stock_id, (price,quantity)>>
-  let mut bought_stocks : HashMap<usize, HashMap<usize,(usize,usize)>> = HashMap::new();
+  let mut buy_requests : HashMap<usize, HashMap<usize,(usize,usize)>> = HashMap::new();
+  let mut unique_id : usize = 0;
 
   for (_, market_tx) in actor.markets.iter() {
     market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
@@ -43,13 +44,30 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
       // For each stock in history
       for stock in hist.stocks.iter(){
         match(hist.history.get(stock)){
-          Some(transactions) => {
+          Some(mut transactions) => {
             println!("Length of transactions is {} for {}.",transactions.len(),stock);
-            for transaction in transactions.iter(){
-              println!("Transaction  b:{} s:{}.",transaction.0,transaction.1);
+            if(transactions.len() > 0){
+              let (buyer,seller) = transactions[transactions.len()-1].clone();
+              match buy_requests.get(&0){
+                Some(stock_requests) => {
+                  match stock_requests.get(stock){
+                    Some(&(request_price,request_quantity)) => {
+                      // If price is above out request a sell
+                      if(buyer.price > request_price){
+                        send_message(0,&mark_clone,BuyRequest(TransactionRequest {transaction_id: unique_id, actor_id:actor_id, stock_id: stock.clone(), price:buyer.price, quantity:buyer.quantity }));
+                        unique_id = unique_id + 1;
+                      }
+                    },
+                    None => {
+                      // Submit new buy request
+                    }
+                  }
+                },
+                None =>{} // Market didn't exist?
+
+              }
             }
-            // if we own the stock and the last sold transaction was above my bought price submit a sell
-            // if we don't own the stock submit a buy for the last sold transaction
+
             },
           None => {}
         }
@@ -203,6 +221,17 @@ fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
       //we don't have any stock left. Just add it back.
       actor.stocks.insert(stock_to_add.0, stock_to_add.1);
     }
+  }
+}
+
+// send_message(0,actor.markets,BuyRequest(TransactionRequest {transaction_id: unique_id, actor_id:actor_id, stock_id: stock, price:buyer.price, quantity:buyer.quantity }));
+
+fn send_message(market_id : usize, markets: &HashMap<usize, Sender<MarketMessages>>, message: MarketMessages){
+  match markets.get(&market_id){
+    Some(market) => {
+      market.send(message);
+      },
+    None => {}
   }
 }
 
