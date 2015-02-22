@@ -164,7 +164,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               actor.history = history;
               init_history = true;},
             Time(current, max) => {
-              println!("Actor {} received time {}", actor.id, current);
+              //println!("Actor {} received time {}", actor.id, current);
             }
           }
         },

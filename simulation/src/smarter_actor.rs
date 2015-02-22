@@ -7,11 +7,12 @@ use std::time::Duration;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
-use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor, MatchRequest,HistoryRequest};
+use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor, MatchRequest};
 use actor::Actor;
 
 // Smarter actor
 // (monitors price last sold at and put a sell request if any stocks are above their purchase price)
+
 
 pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Smarter_Actor {}", actor_id);
@@ -22,7 +23,10 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                           pending_money: 0,
                           pending_stock: (0, 0),
                           markets: existing_markets,
-                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))};
+                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))
+                          };
+  // Stocks = HashMap<market_id, HashMap<stock_id, (price,quantity)>>
+  let mut bought_stocks : HashMap<usize, HashMap<usize,(usize,usize)>> = HashMap::new();
 
   for (_, market_tx) in actor.markets.iter() {
     market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
@@ -33,11 +37,11 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
     let mark_clone = actor.markets.clone();
     let stock_clone = actor.stocks.clone();
 
+    if(init_history){
+      let hist = actor.history.lock().unwrap();
+      println!("History has length {} for smarter_actor.",hist.stocks.len());
 
-    for (_, market_tx) in actor.markets.iter() {
-      market_tx.send(HistoryRequest(actor_id));
     }
-
 
     match actor_rx.try_recv() {
       Ok(message) => {
@@ -158,7 +162,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
             History(history) => {
               println!("Smarter_actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
-              init_history = true;},
+              init_history = true;
+              },
             Time(current, max) => {
               println!("Smarter_actor {} received time {}", actor.id, current);
             }
