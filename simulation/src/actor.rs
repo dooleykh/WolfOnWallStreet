@@ -6,7 +6,7 @@ use std::old_io::timer;
 use std::time::Duration;
 
 use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor};
 
 pub struct Actor {
@@ -21,7 +21,6 @@ pub struct Actor {
 
 pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Actor {}", actor_id);
-  let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
@@ -161,11 +160,9 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
             },
             History(history) => {
               println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
-              actor.history = history;
-              init_history = true;},
-            Time(current, max) => {
-              //println!("Actor {} received time {}", actor.id, current);
-            }
+              actor.history = history;},
+            Time(_, _) => {},
+            ReceiveActivityCount(_,_,_) => {}
           }
         },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},

@@ -6,8 +6,9 @@ use std::thread::Thread;
 use std::cmp;
 
 use messages::{ActorMessages, MarketMessages, MarketHistory, MoneyRequest, StockRequest, TransactionRequest, TellerMessages};
-use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest};
+use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest, RequestActivityCount};
 use messages::ActorMessages::{AbortTransaction, CommitTransaction, History};
+use messages::TellerMessages::{RequestCount};
 use teller::*;
 
 struct Market {
@@ -106,6 +107,16 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
           activate_transactions(&mut market, buyer, seller);
         }
       },
+      RequestActivityCount(actor_id, stock_id, buying) => {
+        //look up the actor transmitter.
+        match market.actors.get(&actor_id) {
+          Some(channel) => {
+            let chan_clone = channel.clone();
+            route_teller(RequestCount(chan_clone, buying), &market, stock_id);
+            },
+          None => {}
+        }
+      }
     }
   }
 }
@@ -230,4 +241,13 @@ fn route(buying: bool, transaction: TransactionRequest, market: & Market) {
   else {
     tx.send(TellerMessages::SellRequest(transaction)).unwrap();
   };
+}
+
+fn route_teller(message: TellerMessages, market: &Market, teller_id: usize) {
+  let tx;
+  match market.tellers.get(&teller_id) {
+    Some(channel) => {tx = channel;},
+    None => {return;}
+  }
+  tx.send(message).unwrap();
 }
