@@ -47,6 +47,7 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   //Start the receive loop
   loop {
     let message = market_rx.recv().unwrap();
+    //println!("There have been {} transactions involving Stock 0", market.history.lock().unwrap().transaction_count(0));
     match message {
       SellRequest(request) => {route(false, request, &market)},
       BuyRequest(request) => {route(true, request, &market)},

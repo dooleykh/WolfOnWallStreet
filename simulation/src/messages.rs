@@ -67,4 +67,11 @@ impl MarketHistory {
   pub fn len(&self) -> usize {
     self.history.len()
   }
+
+  pub fn transaction_count(&self, stock_id: usize) -> usize {
+    match self.history.get(&stock_id) {
+      Some(transactions) => transactions.len(),
+      None => 0
+    }
+  }
 }
