@@ -28,7 +28,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                           pending_money: 0,
                           pending_stock: (0, 0),
                           markets: existing_markets,
-                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new()}))};
+                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))};
 
   for (_, market_tx) in actor.markets.iter() {
     market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
@@ -168,7 +168,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
             }
           }
         },
-      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
+      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }

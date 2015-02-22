@@ -54,7 +54,8 @@ pub struct MoneyRequest {
 }
 
 pub struct MarketHistory {
-  pub history: HashMap<usize, Vec<(TransactionRequest, TransactionRequest)>>
+  pub history: HashMap<usize, Vec<(TransactionRequest, TransactionRequest)>>,
+  pub stocks: Vec<usize>
 }
 
 impl fmt::Display for MarketHistory {

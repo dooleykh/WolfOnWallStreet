@@ -23,7 +23,7 @@ struct Market {
 //Called on a new thread
 pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_rx: Receiver<MarketMessages>) {
   //Create Market struct
-  let initial_history = Mutex::new(MarketHistory {history: HashMap::new()});
+  let initial_history = Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]});
   let mut market = Market {id:market_id,
                              tellers: HashMap::new(),
                              actors: HashMap::new(),
@@ -32,12 +32,16 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
                              pending_transactions: vec![],
                              history: Arc::new(initial_history)};
   //TODO: Initialize Tellers
-  for i in 0..1 {
-    let (tx, rx): (Sender<TellerMessages>, Receiver<TellerMessages>) = channel();
-    market.tellers.insert(i, tx);
-    let market_tx_clone = market_tx.clone();
-    Thread::spawn(move ||
-      {start_teller(i, market_tx_clone, rx);});
+  {
+    let mut h = market.history.lock().unwrap();
+    for i in 0..1 {
+      let (tx, rx): (Sender<TellerMessages>, Receiver<TellerMessages>) = channel();
+      market.tellers.insert(i, tx);
+      let market_tx_clone = market_tx.clone();
+      Thread::spawn(move ||
+        {start_teller(i, market_tx_clone, rx);});
+      h.stocks.push(i);
+    }
   }
 
   //Start the receive loop
