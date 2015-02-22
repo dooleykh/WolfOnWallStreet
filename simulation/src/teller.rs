@@ -1,30 +1,34 @@
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{Sender, Receiver};
 
-use messages::*;
+use messages::{TransactionRequest, MarketMessages, TellerMessages};
+use messages::MarketMessages::{MatchRequest};
+use messages::TellerMessages::{SellRequest, BuyRequest, RevokeRequest};
 
 struct Teller {
-  id: usize,
   buy_requests: Vec<TransactionRequest>,
   sell_requests: Vec<TransactionRequest>
 }
 
 pub fn start_teller(teller_id: usize, market_tx: Sender<MarketMessages>, teller_rx: Receiver<TellerMessages>) {
-  let mut teller = Teller{id: teller_id, buy_requests: vec![], sell_requests: vec![]};
+  let mut teller = Teller{buy_requests: vec![],
+                          sell_requests: vec![]};
 
   loop {
     let message = teller_rx.recv().unwrap();
     match message {
-      TellerMessages::BuyRequest(request) => {teller.buy_requests.push(request.clone());
-                                              match make_buy_request(&mut teller) {
-                                                Some(sell) => {market_tx.send(MarketMessages::MatchRequest(request, sell));}
-                                                None => {} };
-                                              println!("RECEIVED BUY REQUEST")},
-      TellerMessages::SellRequest(request) => {teller.sell_requests.push(request.clone());
-                                              match make_sell_request(&mut teller) {
-                                                Some(buy) => {market_tx.send(MarketMessages::MatchRequest(buy, request));}
-                                                None => {} };
-                                              println!("RECEIVED SELL REQUEST")},
-      TellerMessages::RevokeRequest(actor_id, transaction_id) => {revoke(actor_id, transaction_id, &mut teller);}
+      BuyRequest(request) => {
+        teller.buy_requests.push(request.clone());
+        match make_buy_request(&mut teller) {
+          Some(sell) => {market_tx.send(MatchRequest(request, sell)).unwrap();}
+          None => {} };
+        println!("RECEIVED BUY REQUEST")},
+      SellRequest(request) => {
+        teller.sell_requests.push(request.clone());
+        match make_sell_request(&mut teller) {
+          Some(buy) => {market_tx.send(MatchRequest(buy, request)).unwrap();}
+          None => {} };
+        println!("RECEIVED SELL REQUEST")},
+      RevokeRequest(actor_id, transaction_id) => {revoke(actor_id, transaction_id, &mut teller);}
     }
   }
 }

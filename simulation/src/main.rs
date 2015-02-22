@@ -1,3 +1,4 @@
+#![feature(core, io, std_misc)]
 use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::thread::Thread;
@@ -5,14 +6,14 @@ use std::old_io::timer;
 use std::time::Duration;
 
 pub mod messages;
-use messages::*;
 pub mod market;
-use market::*;
 pub mod actor;
-use actor::*;
 pub mod teller;
-use teller::*;
 pub mod corporate_actor;
+
+use messages::*;
+use market::*;
+use actor::*;
 use corporate_actor::*;
 
 fn main() {
@@ -36,17 +37,17 @@ fn main() {
     let m = markets.clone();
     let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
     actors_with_timers.push(actor_tx.clone());
-    Thread::spawn(move || {actor::start_actor(id, m, actor_tx, actor_rx);});
+    Thread::spawn(move || {start_actor(id, m, actor_tx, actor_rx);});
   }
   for id in standard_actor_count..standard_actor_count+corporate_actor_count {
     let m = markets.clone();
-    Thread::spawn(move || {corporate_actor::start_corporate_actor(id, m, 0, 100);});//start a corporate actor with 100 of stock 0
+    Thread::spawn(move || {start_corporate_actor(id, m, 0, 100);});//start a corporate actor with 100 of stock 0
   }
 
   let tick = 100;
   for t in 0..248 {
     for tx in actors_with_timers.iter() {
-      tx.send(ActorMessages::Time(t * tick, 247 * tick));
+      tx.send(ActorMessages::Time(t * tick, 247 * tick)).unwrap();
     }
     timer::sleep(Duration::milliseconds(tick as i64));
   }

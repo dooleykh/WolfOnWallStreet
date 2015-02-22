@@ -5,7 +5,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::Thread;
 use std::cmp;
 
-use messages::*;
+use messages::{ActorMessages, MarketMessages, MarketHistory, MoneyRequest, StockRequest, TransactionRequest, TellerMessages};
+use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest};
+use messages::ActorMessages::{AbortTransaction, CommitTransaction, History};
 use teller::*;
 
 struct Market {
@@ -21,7 +23,7 @@ struct Market {
 //Called on a new thread
 pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_rx: Receiver<MarketMessages>) {
   //Create Market struct
-  let mut initial_history = Mutex::new(MarketHistory {history: HashMap::new()});
+  let initial_history = Mutex::new(MarketHistory {history: HashMap::new()});
   let mut market = Market {id:market_id,
                              tellers: HashMap::new(),
                              actors: HashMap::new(),
@@ -42,63 +44,63 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   loop {
     let message = market_rx.recv().unwrap();
     match message {
-        MarketMessages::SellRequest(request) => {route(false, request, &market)},
-        MarketMessages::BuyRequest(request) => {route(true, request, &market)},
-        MarketMessages::Commit(actor_id) => {
-          println!("Commit {}", actor_id);
-          if has_active_transaction(&market, actor_id) {
-            market.committed_actors.push(actor_id);
-            let tup = get_active_transaction_involving(&market, actor_id);
-            if contains(&market.committed_actors, tup.0.actor_id) && contains(&market.committed_actors, tup.1.actor_id) {
-              //make the transaction complete. Tell the actors to commit;
-              remove(&mut market.committed_actors, tup.0.actor_id);
-              remove(&mut market.committed_actors, tup.1.actor_id);
+      SellRequest(request) => {route(false, request, &market)},
+      BuyRequest(request) => {route(true, request, &market)},
+      Commit(actor_id) => {
+        println!("Commit {}", actor_id);
+        if has_active_transaction(&market, actor_id) {
+          market.committed_actors.push(actor_id);
+          let tup = get_active_transaction_involving(&market, actor_id);
+          if contains(&market.committed_actors, tup.0.actor_id) && contains(&market.committed_actors, tup.1.actor_id) {
+            //make the transaction complete. Tell the actors to commit;
+            remove(&mut market.committed_actors, tup.0.actor_id);
+            remove(&mut market.committed_actors, tup.1.actor_id);
 
-              route_actor_message(&market, tup.0.actor_id, ActorMessages::CommitTransaction(tup.1.clone()));
-              route_actor_message(&market, tup.1.actor_id, ActorMessages::CommitTransaction(tup.0.clone()));
-              remove_active_transaction(&mut market, &tup);
-              move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
+            route_actor_message(&market, tup.0.actor_id, CommitTransaction(tup.1.clone()));
+            route_actor_message(&market, tup.1.actor_id, CommitTransaction(tup.0.clone()));
+            remove_active_transaction(&mut market, &tup);
+            move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
 
-              let stock_id = tup.0.stock_id;
-              let mut h = market.history.lock().unwrap();
-              match h.history.entry(stock_id) {
-                Entry::Occupied(mut transaction) => {transaction.get_mut().push(tup);},
-                Entry::Vacant(val) => {val.insert(vec![tup]);}
-              }
-              let mut s = "".to_string();
-              for k in h.history.keys() {
-                s = s + k.to_string().as_slice();
-              }
-              println!("Market {} commited a transaction, currently have sold stocks {} ", market.id, s);
+            let stock_id = tup.0.stock_id;
+            let mut h = market.history.lock().unwrap();
+            match h.history.entry(stock_id) {
+              Entry::Occupied(mut transaction) => {transaction.get_mut().push(tup);},
+              Entry::Vacant(val) => {val.insert(vec![tup]);}
             }
+            let mut s = "".to_string();
+            for k in h.history.keys() {
+              s = s + k.to_string().as_slice();
+            }
+            println!("Market {} commited a transaction, currently have sold stocks {} ", market.id, s);
           }
         }
-        MarketMessages::Cancel(actor_id) => {
-          println!("Cancel {}", actor_id);
-          if has_active_transaction(&market, actor_id) {
-            let tup = get_active_transaction_involving(&market, actor_id);
-            route_actor_message(&market, tup.0.actor_id, ActorMessages::AbortTransaction);
-            route_actor_message(&market, tup.1.actor_id, ActorMessages::AbortTransaction);
+      }
+      Cancel(actor_id) => {
+        println!("Cancel {}", actor_id);
+        if has_active_transaction(&market, actor_id) {
+          let tup = get_active_transaction_involving(&market, actor_id);
+          route_actor_message(&market, tup.0.actor_id, AbortTransaction);
+          route_actor_message(&market, tup.1.actor_id, AbortTransaction);
 
-            //remove it from active
-            remove_active_transaction(&mut market, &tup);
+          //remove it from active
+          remove_active_transaction(&mut market, &tup);
 
-            move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
-          }
-          },
-        MarketMessages::RegisterActor(actor_id, actor_tx) => {
-          let temp_clone = actor_tx.clone();
-          market.actors.insert(actor_id, temp_clone);
-          actor_tx.send(ActorMessages::History(market.history.clone()));},
-        MarketMessages::MatchRequest(mut buyer, mut seller) => {
-          if has_active_transaction(&market, buyer.actor_id) || has_active_transaction(&market, seller.actor_id) {
-            //add to pending transactions
-            market.pending_transactions.push((buyer, seller));
-          }
-          else {
-            activate_transactions(&mut market, buyer, seller);
-          }
-          },
+          move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
+        }
+        },
+      RegisterActor(actor_id, actor_tx) => {
+        let temp_clone = actor_tx.clone();
+        market.actors.insert(actor_id, temp_clone);
+        actor_tx.send(History(market.history.clone())).unwrap();},
+      MatchRequest(buyer, seller) => {
+        if has_active_transaction(&market, buyer.actor_id) || has_active_transaction(&market, seller.actor_id) {
+          //add to pending transactions
+          market.pending_transactions.push((buyer, seller));
+        }
+        else {
+          activate_transactions(&mut market, buyer, seller);
+        }
+      },
     }
   }
 }
@@ -122,14 +124,14 @@ fn move_pending_to_active(market: &mut Market, actor1: usize, actor2: usize) {
   //actor 1
   for i in 0..market.pending_transactions.len() {
     let pending_transaction = market.pending_transactions[i].clone();
-    if (pending_transaction.0.actor_id == actor1) {
+    if pending_transaction.0.actor_id == actor1 {
       if !has_active_transaction(&market, pending_transaction.1.actor_id) {
         activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
         remove(&mut market.pending_transactions, pending_transaction);
         break;
       }
     }
-    if (pending_transaction.1.actor_id == actor1) {
+    if pending_transaction.1.actor_id == actor1 {
       if !has_active_transaction(&market, pending_transaction.0.actor_id) {
         activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
         remove(&mut market.pending_transactions, pending_transaction);
@@ -141,14 +143,14 @@ fn move_pending_to_active(market: &mut Market, actor1: usize, actor2: usize) {
   //actor 2
   for i in 0..market.pending_transactions.len() {
     let pending_transaction = market.pending_transactions[i].clone();
-    if (pending_transaction.0.actor_id == actor2) {
+    if pending_transaction.0.actor_id == actor2 {
       if !has_active_transaction(&market, pending_transaction.1.actor_id) {
         activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
         remove(&mut market.pending_transactions, pending_transaction);
         break;
       }
     }
-    if (pending_transaction.1.actor_id == actor2) {
+    if pending_transaction.1.actor_id == actor2 {
       if !has_active_transaction(&market, pending_transaction.0.actor_id) {
         activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
         remove(&mut market.pending_transactions, pending_transaction);
@@ -206,7 +208,7 @@ fn has_active_transaction(market_ref : &Market, id: usize) -> bool {
 
 fn route_actor_message(market: & Market, actor_id: usize, message: ActorMessages) {
   match market.actors.get(&actor_id) {
-    Some(channel) => {channel.send(message);},
+    Some(channel) => {channel.send(message).unwrap();},
     None => {}
   }
 }
@@ -218,9 +220,9 @@ fn route(buying: bool, transaction: TransactionRequest, market: & Market) {
     None => {return;}
   }
   if buying {
-    tx.send(TellerMessages::BuyRequest(transaction));
+    tx.send(TellerMessages::BuyRequest(transaction)).unwrap();
   }
   else {
-    tx.send(TellerMessages::SellRequest(transaction));
+    tx.send(TellerMessages::SellRequest(transaction)).unwrap();
   };
 }

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
 
-use messages::*;
+use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
+use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor};
 
 pub struct Actor {
   pub id: usize,
@@ -19,7 +21,6 @@ pub struct Actor {
 
 pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Actor {}", actor_id);
-  let start_history = Arc::new(Mutex::new(MarketHistory {history: HashMap::new()}));
   let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
@@ -27,14 +28,14 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                           pending_money: 0,
                           pending_stock: (0, 0),
                           markets: existing_markets,
-                          history: start_history};
+                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new()}))};
 
-  for (name, market_tx) in actor.markets.iter() {
-    market_tx.send(MarketMessages::RegisterActor(actor.id, actor_tx.clone()));
+  for (_, market_tx) in actor.markets.iter() {
+    market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
 
     //TODO Remove automatic buy request transmission.
     let transaction = TransactionRequest{actor_id: actor_id, transaction_id: 0, stock_id: 0, price: 100, quantity: 10};
-    market_tx.send(MarketMessages::BuyRequest(transaction));
+    market_tx.send(BuyRequest(transaction)).unwrap();
   }
 
   loop {
@@ -45,7 +46,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
     match actor_rx.try_recv() {
       Ok(message) => {
           match message {
-            ActorMessages::StockRequest(stock_request) => {
+            StockRequest(stock_request) => {
               println!("Started Stock Request in actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
@@ -58,7 +59,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                 }
               }
               if has_pending_transaction(&actor) {
-                market_tx.send(MarketMessages::Cancel(actor.id));
+                market_tx.send(Cancel(actor.id)).unwrap();
               }
               else {
                 //if we have the stock. set it aside.
@@ -70,20 +71,20 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                     if *owned_quantity >= quantity {
                       remove_stock(&mut actor, (stock_id, quantity));
                       actor.pending_stock = (stock_id, quantity);
-                      market_tx.send(MarketMessages::Commit(actor.id));
+                      market_tx.send(Commit(actor.id)).unwrap();
                     }
                     else {
-                      market_tx.send(MarketMessages::Cancel(actor.id));
+                      market_tx.send(Cancel(actor.id)).unwrap();
                     }
                   },
                   None => {
-                    market_tx.send(MarketMessages::Cancel(actor.id));
+                    market_tx.send(Cancel(actor.id)).unwrap();
                   }
                 }
               }
               print_status(&actor);
               },
-            ActorMessages::MoneyRequest(money_request) => {
+            MoneyRequest(money_request) => {
               let market_tx;
               let tx_text = actor.markets.get(&money_request.market_id);
               match tx_text {
@@ -95,22 +96,22 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                 }
               }
               if has_pending_transaction(&actor) {
-                market_tx.send(MarketMessages::Cancel(actor.id));
+                market_tx.send(Cancel(actor.id)).unwrap();
               }
               else {
                 //if we have the money. set it aside.
                 if actor.money >= money_request.amount {
                   actor.money = actor.money - money_request.amount;
                   actor.pending_money = money_request.amount;
-                  market_tx.send(MarketMessages::Commit(actor.id));
+                  market_tx.send(Commit(actor.id)).unwrap();
                 }
                 else {
-                  market_tx.send(MarketMessages::Cancel(actor.id));
+                  market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
               print_status(&actor);
               },
-            ActorMessages::CommitTransaction(commit_transaction_request) => {
+            CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
               if actor.pending_money > 0 {
@@ -139,7 +140,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               println!("After a committed transaction in actor {} ", actor.id);
               print_status(&actor);
               },
-            ActorMessages::AbortTransaction => {
+            AbortTransaction => {
               //move pending stock back into stocks.
               if actor.pending_stock.1 != 0 {
                 let pending_stock_clone = actor.pending_stock.clone();
@@ -158,16 +159,16 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               }
               println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
-            ActorMessages::History(history) => {
+            History(history) => {
               println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true;},
-            ActorMessages::Time(current, max) => {
+            Time(current, max) => {
               println!("Actor {} received time {}", actor.id, current);
             }
           }
         },
-      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},
+      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
