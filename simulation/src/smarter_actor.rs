@@ -38,9 +38,16 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
     let stock_clone = actor.stocks.clone();
 
     if(init_history){
-      let hist = actor.history.lock().unwrap();
-      println!("History has length {} for smarter_actor.",hist.stocks.len());
+      let hist = actor.history.lock();
 
+      // For each stock in history
+      for stock in hist.stocks.iter(){
+        // if we own the stock and the last sold transaction was above my bought price submit a sell
+        
+        // if we don't own the stock submit a buy for the last sold transaction
+      }
+
+      println!("History has length {} for smarter_actor.",hist.stocks.len());
     }
 
     match actor_rx.try_recv() {

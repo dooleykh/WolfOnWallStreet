@@ -53,7 +53,7 @@ pub struct MoneyRequest {
 }
 
 pub struct MarketHistory {
-  pub history: HashMap<usize, Vec<(TransactionRequest, TransactionRequest)>>,
+  pub history: HashMap<usize, Vec<(TransactionRequest, TransactionRequest)>>, // stock_id, <Buy,Sell>
   pub stocks: Vec<usize>
 }
 
