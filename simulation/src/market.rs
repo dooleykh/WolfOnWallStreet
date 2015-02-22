@@ -6,7 +6,7 @@ use std::thread::Thread;
 use std::cmp;
 
 use messages::{ActorMessages, MarketMessages, MarketHistory, MoneyRequest, StockRequest, TransactionRequest, TellerMessages};
-use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest};
+use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest,HistoryRequest};
 use messages::ActorMessages::{AbortTransaction, CommitTransaction, History};
 use teller::*;
 
@@ -104,6 +104,9 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
         else {
           activate_transactions(&mut market, buyer, seller);
         }
+      },
+      HistoryRequest(actor_id) => {
+        route_actor_message(&market,actor_id,History(market.history.clone()));
       },
     }
   }
