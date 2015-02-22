@@ -45,25 +45,44 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
       for stock in hist.stocks.iter(){
         match(hist.history.get(stock)){
           Some(mut transactions) => {
-            println!("Length of transactions is {} for {}.",transactions.len(),stock);
+            // Check that stock's last transaction
             if(transactions.len() > 0){
               let (buyer,seller) = transactions[transactions.len()-1].clone();
-              match buy_requests.get(&0){
+              match buy_requests.clone().get(&0){
                 Some(stock_requests) => {
                   match stock_requests.get(stock){
                     Some(&(request_price,request_quantity)) => {
-                      // If price is above out request a sell
+                      // If it's price is above ours request a sell
                       if(buyer.price > request_price){
-                        send_message(0,&mark_clone,BuyRequest(TransactionRequest {transaction_id: unique_id, actor_id:actor_id, stock_id: stock.clone(), price:buyer.price, quantity:buyer.quantity }));
+                        let trans : TransactionRequest  = TransactionRequest   {  transaction_id: unique_id
+                                                                                , actor_id:actor_id
+                                                                                , stock_id: stock.clone()
+                                                                                , price:buyer.price
+                                                                                , quantity:request_quantity
+                                                                                };
+                        send_message(0,&mark_clone,SellRequest(trans.clone()));
+                        println!("smarter_actor : {} submitted a SellRequest : {}",actor_id,trans);
                         unique_id = unique_id + 1;
                       }
                     },
                     None => {
-                      // Submit new buy request
+                      // Otherwise lets try to buy some stock to sell later
+                      let request_quantity = (actor.money/10)/seller.price;
+                      let trans : TransactionRequest  = TransactionRequest{   transaction_id: unique_id
+                                                                            , actor_id:actor_id
+                                                                            , stock_id: stock.clone()
+                                                                            , price:seller.price
+                                                                            , quantity:request_quantity
+                                                                          };
+                      send_message(0,&mark_clone,BuyRequest(trans.clone()));
+                      unique_id = unique_id + 1;
+                      println!("smarter_actor : {} submitted a BuyRequest : {}",actor_id,trans);
                     }
                   }
                 },
-                None =>{} // Market didn't exist?
+                None =>{
+                  buy_requests.insert(0,HashMap::new());
+                  } // Market didn't exist?
 
               }
             }
@@ -73,8 +92,6 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
         }
 
       }
-
-      println!("History has length {} for smarter_actor.",hist.stocks.len());
     }
 
     match actor_rx.try_recv() {
