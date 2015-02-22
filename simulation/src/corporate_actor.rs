@@ -15,7 +15,7 @@ their prices and instead only want to get their stock out into the market.
 
 pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, stock_id: usize, starting_quantity: usize) {
   println!("Starting Corporate Actor {}", actor_id);
-  let start_history = Arc::new(Mutex::new(MarketHistory {history: vec![]}));
+  let start_history = Arc::new(Mutex::new(MarketHistory {history: HashMap::new()}));
   let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
@@ -34,9 +34,9 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
 
   loop {
     //Logic
-    if (actor.pending_stock.1 == 0) {
+    if actor.pending_stock.1 == 0 {
       for (stock_id, quantity) in actor.stocks.iter() {
-        if (*quantity > 0) {
+        if *quantity > 0 {
           for (name, market_tx) in actor.markets.iter() {
             let transaction = TransactionRequest{actor_id: actor_id, transaction_id: next_transaction_id, stock_id: *stock_id, price: 10, quantity: *quantity / actor.markets.len()};
             market_tx.send(MarketMessages::SellRequest(transaction));
@@ -169,6 +169,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
               println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true;}
+            ActorMessages::Time(current, max) => {}
           }
         }, //{println!("Actor {} received {}", actor.id, id);},
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},

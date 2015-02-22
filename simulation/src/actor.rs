@@ -17,9 +17,9 @@ pub struct Actor {
   pub history: Arc<Mutex<MarketHistory>>
 }
 
-pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>) {
+pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Actor {}", actor_id);
-  let start_history = Arc::new(Mutex::new(MarketHistory {history: vec![]}));
+  let start_history = Arc::new(Mutex::new(MarketHistory {history: HashMap::new()}));
   let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
@@ -29,7 +29,6 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
                           markets: existing_markets,
                           history: start_history};
 
-  let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
   for (name, market_tx) in actor.markets.iter() {
     market_tx.send(MarketMessages::RegisterActor(actor.id, actor_tx.clone()));
 
@@ -162,13 +161,15 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
             ActorMessages::History(history) => {
               println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
-              init_history = true;}
+              init_history = true;},
+            ActorMessages::Time(current, max) => {
+              println!("Actor {} received time {}", actor.id, current);
+            }
           }
         },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
-    println!("Actor {} history predicate says length is {}", actor.id, actor.history.lock().unwrap().len());
   }
 }
 

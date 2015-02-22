@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::sync::{Arc, Mutex};
 use std::thread::Thread;
@@ -20,7 +21,7 @@ struct Market {
 //Called on a new thread
 pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_rx: Receiver<MarketMessages>) {
   //Create Market struct
-  let mut initial_history = Mutex::new(MarketHistory {history: vec![]});
+  let mut initial_history = Mutex::new(MarketHistory {history: HashMap::new()});
   let mut market = Market {id:market_id,
                              tellers: HashMap::new(),
                              actors: HashMap::new(),
@@ -40,7 +41,6 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   //Start the receive loop
   loop {
     let message = market_rx.recv().unwrap();
-    println!("In market: history is {}", *(market.history.lock().unwrap()));
     match message {
         MarketMessages::SellRequest(request) => {route(false, request, &market)},
         MarketMessages::BuyRequest(request) => {route(true, request, &market)},
@@ -58,7 +58,18 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
               route_actor_message(&market, tup.1.actor_id, ActorMessages::CommitTransaction(tup.0.clone()));
               remove_active_transaction(&mut market, &tup);
               move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
-              market.history.lock().unwrap().history.push(tup);
+
+              let stock_id = tup.0.stock_id;
+              let mut h = market.history.lock().unwrap();
+              match h.history.entry(stock_id) {
+                Entry::Occupied(mut transaction) => {transaction.get_mut().push(tup);},
+                Entry::Vacant(val) => {val.insert(vec![tup]);}
+              }
+              let mut s = "".to_string();
+              for k in h.history.keys() {
+                s = s + k.to_string().as_slice();
+              }
+              println!("Market {} commited a transaction, currently have sold stocks {} ", market.id, s);
             }
           }
         }

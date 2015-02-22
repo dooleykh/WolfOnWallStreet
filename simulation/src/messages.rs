@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{Arc, Mutex};
 use std::fmt;
@@ -19,7 +20,8 @@ pub enum ActorMessages {
   MoneyRequest(MoneyRequest), //The amount of money needed to buy the stock(s)
   CommitTransaction(TransactionRequest), //The information related to the transaction
   AbortTransaction,
-  History(Arc<Mutex<MarketHistory>>)
+  History(Arc<Mutex<MarketHistory>>),
+  Time(usize, usize) //Current time, max time
 }
 
 // Messages from a Market to a Teller
@@ -52,7 +54,7 @@ pub struct MoneyRequest {
 }
 
 pub struct MarketHistory {
-  pub history: Vec<(TransactionRequest, TransactionRequest)>
+  pub history: HashMap<usize, Vec<(TransactionRequest, TransactionRequest)>>
 }
 
 impl fmt::Display for MarketHistory {
