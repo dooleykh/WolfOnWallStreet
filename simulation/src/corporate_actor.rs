@@ -172,8 +172,8 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
               init_history = true;}
             Time(current, max) => {}
           }
-        }, 
-      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1000));},
+        },
+      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
