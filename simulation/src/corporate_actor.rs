@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
-use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor, MatchRequest};
+use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor};
 use actor::Actor;
 
 /*
@@ -24,7 +24,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                           pending_money: 0,
                           pending_stock: (0, 0),
                           markets: existing_markets,
-                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new()}))};
+                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))};
   actor.stocks.insert(stock_id, starting_quantity);
   let next_transaction_id = 0;
 
@@ -173,7 +173,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
             Time(current, max) => {}
           }
         },
-      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
+      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
