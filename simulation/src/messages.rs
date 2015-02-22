@@ -39,6 +39,13 @@ pub struct TransactionRequest {
   pub quantity: usize
 }
 
+impl fmt::Display for TransactionRequest {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "[t_id: {}, a_id: {}, s_id: {}, p: {}, q: {}]",
+      self.transaction_id, self.actor_id, self.stock_id, self.price, self.quantity)
+  }
+}
+
 #[derive(Clone)]
 pub struct StockRequest {
   pub market_id: usize,

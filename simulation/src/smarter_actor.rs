@@ -44,6 +44,10 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
       for stock in hist.stocks.iter(){
         match(hist.history.get(stock)){
           Some(transactions) => {
+            println!("Length of transactions is {} for {}.",transactions.len(),stock);
+            for transaction in transactions.iter(){
+              println!("Transaction  b:{} s:{}.",transaction.0,transaction.1);
+            }
             // if we own the stock and the last sold transaction was above my bought price submit a sell
             // if we don't own the stock submit a buy for the last sold transaction
             },
