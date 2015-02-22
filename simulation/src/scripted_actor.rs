@@ -6,7 +6,7 @@ use std::old_io::timer;
 use std::time::Duration;
 
 use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
 
@@ -68,8 +68,10 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
       else {
         for stock in local_stocks.iter() {
           for (_, market_tx) in actor.markets.iter() {
-            let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: low_bid, quantity: 300};
-            market_tx.send(BuyRequest(t)).unwrap();
+            if low_bid < actor.money {
+              let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: low_bid, quantity: 300};
+              market_tx.send(BuyRequest(t)).unwrap();
+            }
           }
         }
       }
@@ -80,6 +82,7 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
     else if current_time % 1000 == 0 {
       low_bid -= 3;
     }
+
 
     let mark_clone = actor.markets.clone();
     let stock_clone = actor.stocks.clone();
@@ -208,10 +211,13 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
               //println!("Actor {} received time {}", actor.id, current);
               current_time = current;
               max_time = max;
+            },
+            ReceiveActivityCount(stock_id, buying, count) => {
+              println!("Scripted Actor received an activity count. Stock: {}, Buying: {}, Count: {}", stock_id, buying, count);
             }
           }
         },
-      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},
+      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }

@@ -6,7 +6,7 @@ use std::old_io::timer;
 use std::time::Duration;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
 use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor};
 use actor::Actor;
 
@@ -17,7 +17,6 @@ their prices and instead only want to get their stock out into the market.
 
 pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, stock_id: usize, starting_quantity: usize) {
   println!("Starting Corporate Actor {}", actor_id);
-  let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
@@ -167,10 +166,9 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
               println!("After aborting the transaction, corporate actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
-              actor.history = history;
-              init_history = true;}
-            Time(current, max) => {}
+              actor.history = history;}
+            Time(_, _) => {},
+            ReceiveActivityCount(_,_,_) => {}
           }
         },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},

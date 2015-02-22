@@ -5,6 +5,7 @@ use std::fmt;
 
 // Messages to a Market
 pub enum MarketMessages {
+  RequestActivityCount(usize, usize, bool), //actor id, stock id, buying
   SellRequest(TransactionRequest),
   BuyRequest(TransactionRequest),
   Commit(usize), //Id of the actor
@@ -16,16 +17,19 @@ pub enum MarketMessages {
 
 // Messages from a Market to an Actor
 pub enum ActorMessages {
+  ReceiveActivityCount(usize, bool, usize), //stock id, buying, how many
   StockRequest(StockRequest),
   MoneyRequest(MoneyRequest), //The amount of money needed to buy the stock(s)
   CommitTransaction(TransactionRequest), //The information related to the transaction
   AbortTransaction,
   History(Arc<Mutex<MarketHistory>>),
   Time(usize, usize) //Current time, max time
+
 }
 
 // Messages from a Market to a Teller
 pub enum TellerMessages {
+  RequestCount(Sender<ActorMessages>, bool), //actor transmitter, buying
   SellRequest(TransactionRequest),
   BuyRequest(TransactionRequest),
   RevokeRequest(usize, usize) //actor_id, transaction_id (unique to a single actor)
