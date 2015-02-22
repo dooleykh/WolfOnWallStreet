@@ -39,7 +39,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
       for (stock_id, quantity) in actor.stocks.iter() {
         if *quantity > 0 {
           for (_, market_tx) in actor.markets.iter() {
-            let transaction = TransactionRequest{actor_id: actor_id, transaction_id: next_transaction_id, stock_id: *stock_id, price: 10, quantity: *quantity / actor.markets.len()};
+            let transaction = TransactionRequest{actor_id: actor_id, transaction_id: next_transaction_id, stock_id: *stock_id, price: 1, quantity: *quantity / actor.markets.len()};
             market_tx.send(SellRequest(transaction)).unwrap();
           }
         }

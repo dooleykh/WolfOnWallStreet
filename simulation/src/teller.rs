@@ -20,14 +20,14 @@ pub fn start_teller(teller_id: usize, market_tx: Sender<MarketMessages>, teller_
         teller.buy_requests.push(request.clone());
         match make_buy_request(&mut teller) {
           Some(sell) => {market_tx.send(MatchRequest(request, sell)).unwrap();}
-          None => {} };
-        println!("RECEIVED BUY REQUEST")},
+          None => {} };},
+        //println!("RECEIVED BUY REQUEST")},
       SellRequest(request) => {
         teller.sell_requests.push(request.clone());
         match make_sell_request(&mut teller) {
           Some(buy) => {market_tx.send(MatchRequest(buy, request)).unwrap();}
-          None => {} };
-        println!("RECEIVED SELL REQUEST")},
+          None => {} };},
+        //println!("RECEIVED SELL REQUEST")},
       RevokeRequest(actor_id, transaction_id) => {revoke(actor_id, transaction_id, &mut teller);}
     }
   }

@@ -10,11 +10,13 @@ pub mod market;
 pub mod actor;
 pub mod teller;
 pub mod corporate_actor;
+pub mod scripted_actor;
 
 use messages::*;
 use market::*;
 use actor::*;
 use corporate_actor::*;
+use scripted_actor::*;
 
 fn main() {
   //tx: clone for actors        rx: owned by market
@@ -32,16 +34,28 @@ fn main() {
 
   let standard_actor_count = 5;
   let corporate_actor_count = 1;
+  let scripted_actor_count = 2;
+
+  let mut current_id = 0;
   //TODO make more stocks and add history so actors can query on it.
-  for id in 0..standard_actor_count {
+  for _ in 0..standard_actor_count {
     let m = markets.clone();
     let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
     actors_with_timers.push(actor_tx.clone());
-    Thread::spawn(move || {start_actor(id, m, actor_tx, actor_rx);});
+    Thread::spawn(move || {start_actor(current_id, m, actor_tx, actor_rx);});
+    current_id += 1;
   }
-  for id in standard_actor_count..standard_actor_count+corporate_actor_count {
+  for _ in 0..corporate_actor_count {
     let m = markets.clone();
-    Thread::spawn(move || {start_corporate_actor(id, m, 0, 100);});//start a corporate actor with 100 of stock 0
+    Thread::spawn(move || {start_corporate_actor(current_id, m, 0, 100);});//start a corporate actor with 100 of stock 0
+    current_id += 1;
+  }
+  for _ in 0..scripted_actor_count {
+    let m = markets.clone();
+    let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
+    actors_with_timers.push(actor_tx.clone());
+    Thread::spawn(move || {start_scripted_actor(current_id, m, actor_tx, actor_rx);});
+    current_id += 1;
   }
 
   let tick = 100;
