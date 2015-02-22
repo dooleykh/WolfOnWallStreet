@@ -6,7 +6,7 @@ use std::old_io::timer;
 use std::time::Duration;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
 use messages::MarketMessages::{BuyRequest, SellRequest, Commit, Cancel, RegisterActor, MatchRequest};
 use actor::Actor;
 
@@ -200,7 +200,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
               },
             Time(current, max) => {
               println!("Smarter_actor {} received time {}", actor.id, current);
-            }
+            },
+            ReceiveActivityCount(_,_,_) => {},
           }
         },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
