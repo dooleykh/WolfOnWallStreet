@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
-use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest, RevokeRequest};
+use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
 use actor::{add_stock, remove_stock, status};
 
@@ -85,7 +85,7 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
 
             if current_time > 3 * (max_time / 4) {
               match backup_sell_requests.remove(stock) {
-                Some(transaction_id) => {
+                Some(_) => {
                   for (_, market_tx) in actor.markets.iter() {
                     //println!("()()()()()Sending backup request");
                     //market_tx.send(RevokeRequest(*stock, actor.id, transaction_id));
@@ -264,13 +264,6 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
-}
-
-fn print_status(actor: &Actor) {
-  for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Dummy Actor_2 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
-  }
-  println!("Dummy Actor_2 {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {
