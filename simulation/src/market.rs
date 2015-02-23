@@ -6,7 +6,7 @@ use std::thread::Thread;
 use std::cmp;
 
 use messages::{ActorMessages, MarketMessages, MarketHistory, MoneyRequest, StockRequest, TransactionRequest, TellerMessages};
-use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest, RequestActivityCount};
+use messages::MarketMessages::{SellRequest, BuyRequest, Commit, Cancel, RegisterActor, MatchRequest, RequestActivityCount, RevokeRequest};
 use messages::ActorMessages::{AbortTransaction, CommitTransaction, History};
 use messages::TellerMessages::{RequestCount};
 use teller::*;
@@ -107,6 +107,14 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
         else {
           // println!("Market is activating transactions for one/both of the parties {} or {}", buyer.actor_id, seller.actor_id);
           activate_transactions(&mut market, buyer, seller);
+        }
+      },
+      RevokeRequest(stock_id, actor_id, transaction_id) => {
+        match market.tellers.get(&stock_id) {
+          Some(teller_rx) => {
+            teller_rx.send(TellerMessages::RevokeRequest(actor_id, transaction_id)).unwrap();
+          },
+          None => {}
         }
       },
       RequestActivityCount(actor_id, stock_id, buying) => {

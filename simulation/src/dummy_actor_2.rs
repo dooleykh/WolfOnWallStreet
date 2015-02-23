@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
-use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
+use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest, RevokeRequest};
 use actor::Actor;
 
 pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
@@ -36,7 +36,6 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
   let mut active_buy_requests = HashMap::new();
   let mut active_sell_requests = HashMap::new();
   let mut backup_sell_requests = HashMap::new();
-
 
   loop {
     if stop_flag {
@@ -75,8 +74,8 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                     let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
                     market_tx.send(SellRequest(t)).unwrap();
                     active_sell_requests.insert(stock_id_incr, *stock);
+                    backup_sell_requests.insert(*stock, stock_id_incr);
                     stock_id_incr = stock_id_incr + 1;
-                    backup_sell_requests.insert(*stock, price / 2);
                   }
                 },
                 None => {}
@@ -85,9 +84,12 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
 
             if current_time > 3 * (max_time / 4) {
               match backup_sell_requests.remove(stock) {
-                Some(_) => {
+                Some(transaction_id) => {
                   for (_, market_tx) in actor.markets.iter() {
-                    let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: 0, quantity: 1};
+                    println!("()()()()()Sending backup request");
+                    market_tx.send(RevokeRequest(*stock, actor.id, transaction_id));
+
+                    let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: 1, quantity: 1};
                     market_tx.send(SellRequest(t)).unwrap();
                     stock_id_incr = stock_id_incr + 1;
                   }
@@ -228,8 +230,8 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 active_sell_requests.remove(&(commit_transaction_request.transaction_id));
                 backup_sell_requests.remove(&(commit_transaction_request.stock_id));
               }
-              //println!("After a committed transaction in actor {} ", actor.id);
-              //print_status(&actor);
+              println!("+++++After a committed transaction in actor {} ", actor.id);
+              print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -296,9 +298,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Dummy Actor_2 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("-----Dummy Actor_2 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Dummy Actor_2 {} has {} money.", (*actor).id, (*actor).money);
+  println!("-----Dummy Actor_2 {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

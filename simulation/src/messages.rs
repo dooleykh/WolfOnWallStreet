@@ -11,7 +11,8 @@ pub enum MarketMessages {
   Commit(usize), //Id of the actor
   Cancel(usize), //Id of the actor
   RegisterActor(usize, Sender<ActorMessages>), //Actor's id, transmit channel
-  MatchRequest(TransactionRequest, TransactionRequest) // (Buyer's Request, Seller's Request)
+  MatchRequest(TransactionRequest, TransactionRequest), // (Buyer's Request, Seller's Request)
+  RevokeRequest(usize, usize, usize) //stock_id, actor_id, transaction_id
 }
 
 // Messages from a Market to an Actor
