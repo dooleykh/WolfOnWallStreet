@@ -10,10 +10,10 @@ use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest}
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
-use actor::{add_stock, remove_stock};
+use actor::{add_stock, remove_stock, status};
 
 pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
-  println!("Starting Actor {}", actor_id);
+  println!("Starting Scripted Actor {}", actor_id);
   let mut stop_flag = false;
   let mut init_history = false;
   let mut actor = Actor { id: actor_id,
@@ -99,7 +99,6 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              // println!("Started Stock Request in actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -188,9 +187,7 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              // println!("After a committed transaction in actor {} ", actor.id);
-              // print_status(&actor);
-              },
+            },
             AbortTransaction => {
               //move pending stock back into stocks.
               if actor.pending_stock.1 != 0 {
@@ -199,31 +196,23 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              // for (stock_id, quantity) in actor.stocks.iter() {
-              //   // println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              // }
 
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              // println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              // println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true;},
             Time(current, max) => {
-              //println!("Actor {} received time {}", actor.id, current);
               current_time = current;
               max_time = max;
             },
-            ReceiveActivityCount(_, _, _) => {
-              // println!("Scripted Actor received an activity count. Stock: {}, Buying: {}, Count: {}", stock_id, buying, count);
-            },
-            Stop => {
-              print_status(&actor);
+            ReceiveActivityCount(_, _, _) => {},
+            Stop(main_channel) => {
+              main_channel.send((actor.id, "(Scripted Actor) ".to_string() + status(&actor).as_slice())).unwrap();
               stop_flag = true;
             }
           }
@@ -232,13 +221,6 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
-}
-
-fn print_status(actor: &Actor) {
-  for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Scripted Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
-  }
-  println!("Scripted Actor {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

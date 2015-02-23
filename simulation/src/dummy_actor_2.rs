@@ -9,7 +9,7 @@ use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest}
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
-use actor::{add_stock, remove_stock};
+use actor::{add_stock, remove_stock, status};
 
 pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Dummy_Actor_2 {}", actor_id);
@@ -133,7 +133,6 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              //println!("Started Stock Request in dummy_actor_2 {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -228,9 +227,7 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 active_sell_requests.remove(&(commit_transaction_request.transaction_id));
                 backup_sell_requests.remove(&(commit_transaction_request.stock_id));
               }
-              //println!("After a committed transaction in actor {} ", actor.id);
-              //print_status(&actor);
-              },
+            },
             AbortTransaction => {
               //move pending stock back into stocks.
               if actor.pending_stock.1 != 0 {
@@ -244,10 +241,8 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              //println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              //println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true},
             Time(current, max) => {
@@ -255,8 +250,8 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 max_time = max;
             },
             ReceiveActivityCount(_,_,_) => {},
-            Stop => {
-              print_status(&actor);
+            Stop(main_channel) => {
+              main_channel.send((actor.id, "(Dumb Actor 2) ".to_string() + status(&actor).as_slice())).unwrap();
               stop_flag = true;
             }
           }
@@ -265,13 +260,6 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
-}
-
-fn print_status(actor: &Actor) {
-  for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Dummy Actor_2 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
-  }
-  println!("Dummy Actor_2 {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

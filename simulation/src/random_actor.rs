@@ -11,13 +11,13 @@ use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest}
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
-use actor::{add_stock, remove_stock};
+use actor::{add_stock, remove_stock, status};
 
 pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   let mut stop_flag = false;
   let mut init_history = false;
   let mut rng = rand::thread_rng();
-  // println!("Starting Actor {}", actor_id);
+  println!("Starting Random Actor {}", actor_id);
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
@@ -71,7 +71,6 @@ pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Send
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              // println!("Started Stock Request in actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -92,14 +91,12 @@ pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Send
                 let stock = stock_clone.get(&stock_id);
                 match stock {
                   Some(owned_quantity) => {
-                    println!("Random actor {} receives stock request with quantity {} for stock {}. He currently is holding {} of that stock.", actor.id, quantity, stock_id, *owned_quantity);
                     if *owned_quantity >= quantity {
                       remove_stock(&mut actor, (stock_id, quantity));
                       actor.pending_stock = (stock_id, quantity);
                       market_tx.send(Commit(actor.id)).unwrap();
                     }
                     else {
-                      println!("Random actor {} canceled because they didn't have enough of stock {}", actor.id, stock_id);
                       market_tx.send(Cancel(actor.id)).unwrap();
                     }
                   },
@@ -140,7 +137,6 @@ pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Send
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
-              // println!("Random Actor {} is receiving a commit request. It has {} money. Transaction is {} stocks for {}. Pending money is {}", actor.id, actor.money, commit_transaction_request.quantity, commit_transaction_request.price, actor.pending_money);
               if actor.pending_money > 0 {
                 let units = commit_transaction_request.quantity;
                 let leftover_money = actor.pending_money - commit_transaction_request.price;
@@ -163,9 +159,7 @@ pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Send
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              // println!("After a committed transaction in actor {} ", actor.id);
-              // print_status(&actor);
-              },
+            },
             AbortTransaction => {
               //move pending stock back into stocks.
               if actor.pending_stock.1 != 0 {
@@ -174,25 +168,19 @@ pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Send
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              // for (stock_id, quantity) in actor.stocks.iter() {
-              //   // println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              // }
-
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              // println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              // println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true;},
             Time(_, _) => {},
             ReceiveActivityCount(_,_,_) => {},
-            Stop => {
-              print_status(&actor);
+            Stop(main_channel) => {
+              main_channel.send((actor.id, "(Random Actor) ".to_string() + status(&actor).as_slice())).unwrap();
               stop_flag = true;
             }
           }
@@ -201,13 +189,6 @@ pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Send
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
-}
-
-fn print_status(actor: &Actor) {
-  for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Random {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
-  }
-  println!("Random {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

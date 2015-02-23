@@ -48,12 +48,10 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   //Start the receive loop
   loop {
     let message = market_rx.recv().unwrap();
-    //println!("There have been {} transactions involving Stock 0", market.history.lock().unwrap().transaction_count(0));
     match message {
       SellRequest(request) => {route(false, request, &market)},
       BuyRequest(request) => {route(true, request, &market)},
       Commit(actor_id) => {
-        // println!("Commit {}", actor_id);
         if has_active_transaction(&market, actor_id) {
           market.committed_actors.push(actor_id);
           let tup = get_active_transaction_involving(&market, actor_id);
@@ -78,7 +76,6 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
         }
       }
       Cancel(actor_id) => {
-        // println!("Cancel {}", actor_id);
         if has_active_transaction(&market, actor_id) {
           let tup = get_active_transaction_involving(&market, actor_id);
           route_actor_message(&market, tup.0.actor_id, AbortTransaction);
@@ -100,12 +97,9 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
       MatchRequest(buyer, seller) => {
         if has_active_transaction(&market, buyer.actor_id) || has_active_transaction(&market, seller.actor_id) {
           //add to pending transactions
-          // println!("Market had an active transaction for one of the parties {} or {}", buyer.actor_id, seller.actor_id);
-          // println!("Market active transactions: {:?}", market.active_transactions);
           market.pending_transactions.push((buyer, seller));
         }
         else {
-          // println!("Market is activating transactions for one/both of the parties {} or {}", buyer.actor_id, seller.actor_id);
           activate_transactions(&mut market, buyer, seller);
         }
       },
@@ -127,7 +121,6 @@ fn activate_transactions(market: &mut Market, mut buyer: TransactionRequest, mut
   //add to active transactions and notify both.
   buyer.price = seller.price;
   let smaller_quantity = cmp::min(seller.quantity, buyer.quantity);
-  // println!("Calculating smaller quantity during transaction of stock {} between {} and {} got {}", buyer.stock_id, buyer.quantity, seller.quantity, smaller_quantity);
   buyer.quantity = smaller_quantity;
   seller.quantity = smaller_quantity;
   let amount_to_pay = buyer.price;
