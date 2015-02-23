@@ -73,6 +73,7 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
         match actor.stocks.get(stock) {
           //If the actor has some of a stock
           Some(count) => {
+
             //And he has not yet sent out a sell request
             if toSellPrices.contains_key(stock) {
               //Get the price he should sell it at (remove from HashMap)
@@ -86,17 +87,19 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                     activeSellRequests.insert(stock_id_incr, *stock);
                     stock_id_incr = stock_id_incr + 1;
                     backupSellRequests.insert(*stock, price / 2);
+                  }
+                },
+                None => {}
+              }
+            }
 
-                    if current_time > 3 * (max_time / 4) {
-                      match backupSellRequests.remove(stock) {
-                        Some(price) => {
-                          let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
-                          market_tx.send(SellRequest(t)).unwrap();
-                          stock_id_incr = stock_id_incr + 1;
-                        },
-                        None => {}
-                      }
-                    }
+            if current_time > 3 * (max_time / 4) {
+              match backupSellRequests.remove(stock) {
+                Some(price) => {
+                  for (_, market_tx) in actor.markets.iter() {
+                    let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: 0, quantity: 1};
+                    market_tx.send(SellRequest(t)).unwrap();
+                    stock_id_incr = stock_id_incr + 1;
                   }
                 },
                 None => {}
