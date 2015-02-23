@@ -29,6 +29,9 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
   let numStocks = actor.stocks.len();
   let mut init_history = false;
   let mut stop_flag = false;
+  let mut toSellPrices = HashMap::new();
+  let mut stock_id_incr = 0;
+
 
   loop {
     if stop_flag {
@@ -43,19 +46,54 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
     //buying and selling decisions
     ////////////////////////////////////////////////////////////////////
     if init_history {
+      //Get variables for the actor's stocks
       let local_stocks;
       {
         local_stocks = actor.history.lock().unwrap().stocks.clone();
       }
+
+      //Iterate through the actor's stocks
       for stock in local_stocks.iter() {
         match actor.stocks.get(stock) {
+          //If the actor has some of a stock
           Some(count) => {
-          },
+            //And he has not yet sent out a sell request
+            if toSellPrices.contains_key(stock) {
+              //Get the price he should sell it at (remove from HashMap)
+              let sell_price = toSellPrices.remove(stock);
+              match sell_price {
+                Some(price) => {
+                  for (_, market_tx) in actor.markets.iter() {
+                    //Send out a sell request to sell it
+                    let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
+                    market_tx.send(SellRequest(t)).unwrap();
+                    stock_id_incr = stock_id_incr + 1;
+                  }
+                },
+                None => {}
+              }
+            }
+          }
+          //If the actor has none of a stock
           None => {
-            if actor.money > 0 {
-              for (_, market_tx) in actor.markets.iter() {
-                let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: 10, quantity: 10};
-                market_tx.send(BuyRequest(t)).unwrap();
+            if !toSellPrices.contains_key(stock) {
+              //Make the price he should buy it at the most recently bought price
+              let buy_price = actor.history.lock().unwrap().last_sold_price(*stock);
+              match buy_price {
+                //If the stock was last bought at a price
+                Some(price) => {
+                  //If the actor can afford to buy it
+                  if actor.money > price {
+                    for (_, market_tx) in actor.markets.iter() {
+                      let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
+                      market_tx.send(BuyRequest(t)).unwrap();
+                      stock_id_incr = stock_id_incr + 1;
+                      toSellPrices.insert(*stock, price * 2);
+                    }
+                  }
+                },
+                //If the stock has not been bought yet
+                None => {}
               }
             }
           }
@@ -69,7 +107,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              println!("Started Stock Request in dummy_actor_1 {}", actor.id);
+              //println!("Started Stock Request in dummy_actor_1 {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -104,7 +142,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                   }
                 }
               }
-              print_status(&actor);
+              //print_status(&actor);
               },
             MoneyRequest(money_request) => {
               let market_tx;
@@ -131,7 +169,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                   market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
-              print_status(&actor);
+              //print_status(&actor);
               },
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
@@ -159,8 +197,8 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              println!("After a committed transaction in actor {} ", actor.id);
-              print_status(&actor);
+              //println!("After a committed transaction in actor {} ", actor.id);
+              //print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -171,7 +209,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
               for (stock_id, quantity) in actor.stocks.iter() {
-                println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+                //println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
               }
 
               //move pending money back into money.
@@ -179,10 +217,10 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
+              //println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              //println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true},
             Time(_, _) => {},
@@ -228,9 +266,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("Dummy Actor_1 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Actor {} has {} money.", (*actor).id, (*actor).money);
+  println!("Dummy Actor_1 {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

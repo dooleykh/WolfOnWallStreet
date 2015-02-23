@@ -30,6 +30,7 @@ fn main() {
   let corporate_actor_count = 3;
   let scripted_actor_count = 2;
   let smarter_actor_count = 5;
+  let dummy_actor_1_count = 4;
 
   //TODO: with spawning multiple markets make this a for loop.
   let tx_market_clone = tx_market.clone();
@@ -73,6 +74,14 @@ fn main() {
     let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
     actors_with_timers.push(actor_tx.clone());
     Thread::spawn(move || {start_smarter_actor(current_id, m, actor_tx, actor_rx);});
+    current_id += 1;
+  }
+
+  for _ in 0..dummy_actor_1_count{
+    let m = markets.clone();
+    let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
+    actors_with_timers.push(actor_tx.clone());
+    Thread::spawn(move || {start_dummy_actor_1(current_id, m, actor_tx, actor_rx);});
     current_id += 1;
   }
 
