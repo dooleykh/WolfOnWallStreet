@@ -22,7 +22,7 @@ struct Market {
 }
 
 //Called on a new thread
-pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_rx: Receiver<MarketMessages>) {
+pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_rx: Receiver<MarketMessages>, max_stock_id: usize) {
   //Create Market struct
   let initial_history = Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]});
   let mut market = Market {id:market_id,
@@ -35,7 +35,7 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   //TODO: Initialize Tellers
   {
     let mut h = market.history.lock().unwrap();
-    for i in 0..1 {
+    for i in 0..max_stock_id {
       let (tx, rx): (Sender<TellerMessages>, Receiver<TellerMessages>) = channel();
       market.tellers.insert(i, tx);
       let market_tx_clone = market_tx.clone();
@@ -53,7 +53,7 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
       SellRequest(request) => {route(false, request, &market)},
       BuyRequest(request) => {route(true, request, &market)},
       Commit(actor_id) => {
-        println!("Commit {}", actor_id);
+        // println!("Commit {}", actor_id);
         if has_active_transaction(&market, actor_id) {
           market.committed_actors.push(actor_id);
           let tup = get_active_transaction_involving(&market, actor_id);
@@ -67,26 +67,25 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
             remove_active_transaction(&mut market, &tup);
             move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
 
+            println!("Market {} commited a transaction, stock {} was sold for {}", market.id, tup.0.stock_id, tup.0.price);
             let stock_id = tup.0.stock_id;
             let mut h = market.history.lock().unwrap();
             match h.history.entry(stock_id) {
               Entry::Occupied(mut transaction) => {transaction.get_mut().push(tup);},
               Entry::Vacant(val) => {val.insert(vec![tup]);}
             }
-            let mut s = "".to_string();
-            for k in h.history.keys() {
-              s = s + k.to_string().as_slice();
-            }
-            println!("Market {} commited a transaction, currently have sold stocks {} ", market.id, s);
           }
         }
       }
       Cancel(actor_id) => {
-        println!("Cancel {}", actor_id);
+        // println!("Cancel {}", actor_id);
         if has_active_transaction(&market, actor_id) {
           let tup = get_active_transaction_involving(&market, actor_id);
           route_actor_message(&market, tup.0.actor_id, AbortTransaction);
           route_actor_message(&market, tup.1.actor_id, AbortTransaction);
+
+          remove(&mut market.committed_actors, tup.0.actor_id);
+          remove(&mut market.committed_actors, tup.1.actor_id);
 
           //remove it from active
           remove_active_transaction(&mut market, &tup);
@@ -101,9 +100,12 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
       MatchRequest(buyer, seller) => {
         if has_active_transaction(&market, buyer.actor_id) || has_active_transaction(&market, seller.actor_id) {
           //add to pending transactions
+          // println!("Market had an active transaction for one of the parties {} or {}", buyer.actor_id, seller.actor_id);
+          // println!("Market active transactions: {:?}", market.active_transactions);
           market.pending_transactions.push((buyer, seller));
         }
         else {
+          // println!("Market is activating transactions for one/both of the parties {} or {}", buyer.actor_id, seller.actor_id);
           activate_transactions(&mut market, buyer, seller);
         }
       },

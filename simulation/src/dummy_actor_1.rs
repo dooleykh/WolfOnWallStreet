@@ -4,101 +4,72 @@ use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
-use std::cmp::max;
 
-use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
-use messages::MarketMessages::{BuyRequest, SellRequest, Commit, Cancel, RegisterActor};
+use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
+use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
 
-// Smarter actor
-// (monitors price last sold at and put a sell request if any stocks are above their purchase price)
-
-
-pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
-  println!("Starting Smarter_Actor {}", actor_id);
-  let mut stop_flag = false;
-  let mut init_history = false;
+pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
+  println!("Starting Dummy_Actor_1 {}", actor_id);
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
                           pending_money: 0,
                           pending_stock: (0, 0),
                           markets: existing_markets,
-                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))
-                          };
-  // Stocks = HashMap<market_id, HashMap<stock_id, (price,quantity)>>
-  let mut buy_requests : HashMap<usize, HashMap<usize,(usize,usize)>> = HashMap::new();
-  let mut unique_id : usize = 0;
+                          history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))};
 
+  //Register the actor with every market
   for (_, market_tx) in actor.markets.iter() {
     market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
   }
+
+  //Number of stocks available to buy
+  let numStocks = actor.stocks.len();
+  let mut init_history = false;
+  let mut stop_flag = false;
 
   loop {
     if stop_flag {
       timer::sleep(Duration::milliseconds(1000));
       continue;
     }
+
     //Logic
     let mark_clone = actor.markets.clone();
     let stock_clone = actor.stocks.clone();
 
+    //buying and selling decisions
+    ////////////////////////////////////////////////////////////////////
     if init_history {
-      let hist = actor.history.lock().unwrap();
-
-      // For each stock in history
-      for stock in hist.stocks.iter(){
-        match hist.last_transaction_for_stock(*stock) {
-          Some((buyer, seller)) => {
-            match buy_requests.clone().get(&0){
-              Some(stock_requests) => {
-                match stock_requests.get(stock){
-                  Some(&(request_price,request_quantity)) => {
-                    // If it's price is above ours request a sell
-                    if buyer.price > request_price {
-                      let trans : TransactionRequest  = TransactionRequest   {  transaction_id: unique_id
-                                                                              , actor_id:actor_id
-                                                                              , stock_id: stock.clone()
-                                                                              , price:buyer.price
-                                                                              , quantity:request_quantity
-                                                                              };
-                      send_message(0,&mark_clone,SellRequest(trans));
-                      // println!("smarter_actor : {} submitted a SellRequest : {}",actor_id,trans);
-                      unique_id = unique_id + 1;
-                    }
-                  },
-                  None => {
-                    // Otherwise lets try to buy some stock to sell later
-                    let request_quantity = (actor.money/10)/max(seller.price, 1);
-                    let trans : TransactionRequest  = TransactionRequest{   transaction_id: unique_id
-                                                                          , actor_id:actor_id
-                                                                          , stock_id: stock.clone()
-                                                                          , price:seller.price
-                                                                          , quantity:request_quantity
-                                                                        };
-                    send_message(0,&mark_clone,BuyRequest(trans));
-                    unique_id = unique_id + 1;
-                    // println!("smarter_actor : {} submitted a BuyRequest : {}",actor_id,trans);
-                  }
-                }
-              },
-              None =>{
-                buy_requests.insert(0,HashMap::new());
-                } // Market didn't exist?
-
-            }
+      let local_stocks;
+      {
+        local_stocks = actor.history.lock().unwrap().stocks.clone();
+      }
+      for stock in local_stocks.iter() {
+        match actor.stocks.get(stock) {
+          Some(count) => {
           },
-          None => {}
+          None => {
+            if actor.money > 0 {
+              for (_, market_tx) in actor.markets.iter() {
+                let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: 10, quantity: 10};
+                market_tx.send(BuyRequest(t)).unwrap();
+              }
+            }
+          }
         }
       }
+
     }
+    /////////////////////////////////////////////////////////////////////
 
     match actor_rx.try_recv() {
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              // println!("Started Stock Request in smarter_actor {}", actor.id);
+              println!("Started Stock Request in dummy_actor_1 {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -133,7 +104,7 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                   }
                 }
               }
-              // print_status(&actor);
+              print_status(&actor);
               },
             MoneyRequest(money_request) => {
               let market_tx;
@@ -160,7 +131,7 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                   market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
-              // print_status(&actor);
+              print_status(&actor);
               },
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
@@ -188,8 +159,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              // println!("After a committed transaction in smarter_actor {} ", actor.id);
-              // print_status(&actor);
+              println!("After a committed transaction in actor {} ", actor.id);
+              print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -199,22 +170,21 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              // for (stock_id, quantity) in actor.stocks.iter() {
-              //   println!("After aborting the transaction, smarter_actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              // }
+              for (stock_id, quantity) in actor.stocks.iter() {
+                println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+              }
 
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              // println!("After aborting the transaction, smarter_actor {} now has {} money.", actor.id, actor.money);
+              println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              // println!("Smarter_actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
-              init_history = true;
-              },
+              init_history = true},
             Time(_, _) => {},
             ReceiveActivityCount(_,_,_) => {},
             Stop => {
@@ -223,8 +193,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
             }
           }
         },
-      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
-      Err(TryRecvError::Disconnected) => {println!("ERROR: Smarter_actor {} disconnected", actor.id);}
+      Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},
+      Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
 }
@@ -244,17 +214,6 @@ fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
   }
 }
 
-// send_message(0,actor.markets,BuyRequest(TransactionRequest {transaction_id: unique_id, actor_id:actor_id, stock_id: stock, price:buyer.price, quantity:buyer.quantity }));
-
-fn send_message(market_id : usize, markets: &HashMap<usize, Sender<MarketMessages>>, message: MarketMessages){
-  match markets.get(&market_id){
-    Some(market) => {
-      market.send(message).unwrap();
-      },
-    None => {}
-  }
-}
-
 fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
   let stock_clone = actor.stocks.clone();
   let held_stock = stock_clone.get(&stock_to_remove.0);
@@ -269,9 +228,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Smarter Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Smarter Actor {} has {} money.", (*actor).id, (*actor).money);
+  println!("Actor {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {
