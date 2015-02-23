@@ -119,9 +119,8 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
               if actor.pending_money > 0 {
-                let price_per_unit = commit_transaction_request.price;
                 let units = commit_transaction_request.quantity;
-                let leftover_money = actor.pending_money - price_per_unit * units;
+                let leftover_money = actor.pending_money - commit_transaction_request.price;
 
                 //make a function for adding stock.
                 add_stock(&mut actor, (commit_transaction_request.stock_id, units));
@@ -133,7 +132,7 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
               //if we have stock pending, look up the quantity purchased and add the money.
               //remove the pending stock
               if actor.pending_stock.1 > 0 {
-                let money = commit_transaction_request.price * commit_transaction_request.quantity;
+                let money = commit_transaction_request.price;
                 let restore_stock = (commit_transaction_request.stock_id, actor.pending_stock.1 - commit_transaction_request.quantity);
                 if restore_stock.1 > 0 {
                   add_stock(&mut actor, restore_stock);
@@ -180,12 +179,14 @@ pub fn start_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<Mark
   }
 }
 
-fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
+pub fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
+  // println!("Adding stock in actor {}, stock to add is {} with quantity {}", actor.id, stock_to_add.0, stock_to_add.1);
   let stock_clone = actor.stocks.clone();
   let held_stock = stock_clone.get(&stock_to_add.0);
   match held_stock {
     Some(stock_count) => {
         //we have some stock. We need to add to our reserve.
+        // println!("After adding stock, actor {} should have {} of stock {}.", actor.id, stock_to_add.1 + *stock_count, stock_to_add.0);
         actor.stocks.insert(stock_to_add.0, stock_to_add.1 + *stock_count);
       },
     None => {
@@ -195,13 +196,15 @@ fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
   }
 }
 
-fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
+pub fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
+  println!("Removing stock in actor {}, stock to remove is {} with quantity {}", actor.id, stock_to_remove.0, stock_to_remove.1);
   let stock_clone = actor.stocks.clone();
   let held_stock = stock_clone.get(&stock_to_remove.0);
   match held_stock {
     Some(stock_count) => {
         //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_remove.0, *stock_count - stock_to_remove.1);
+        println!("Actor {} was currently holding {} of stock {}. Afterwards he will have {}.", actor.id, *stock_count, stock_to_remove.0, *stock_count - stock_to_remove.1);
+        actor.stocks.insert(stock_to_remove.0, stock_count - stock_to_remove.1);
       },
     None => {} //TODO Should we error handle here?
   }

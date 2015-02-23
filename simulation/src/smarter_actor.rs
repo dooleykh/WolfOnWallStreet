@@ -10,6 +10,7 @@ use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory}
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, SellRequest, Commit, Cancel, RegisterActor};
 use actor::Actor;
+use actor::{add_stock, remove_stock};
 
 // Smarter actor
 // (monitors price last sold at and put a sell request if any stocks are above their purchase price)
@@ -166,9 +167,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
               if actor.pending_money > 0 {
-                let price_per_unit = commit_transaction_request.price;
                 let units = commit_transaction_request.quantity;
-                let leftover_money = actor.pending_money - price_per_unit * units;
+                let leftover_money = actor.pending_money - commit_transaction_request.price;
 
                 //make a function for adding stock.
                 add_stock(&mut actor, (commit_transaction_request.stock_id, units));
@@ -180,7 +180,7 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
               //if we have stock pending, look up the quantity purchased and add the money.
               //remove the pending stock
               if actor.pending_stock.1 > 0 {
-                let money = commit_transaction_request.price * commit_transaction_request.quantity;
+                let money = commit_transaction_request.price;
                 let restore_stock = (commit_transaction_request.stock_id, actor.pending_stock.1 - commit_transaction_request.quantity);
                 if restore_stock.1 > 0 {
                   add_stock(&mut actor, restore_stock);
@@ -229,21 +229,6 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
   }
 }
 
-fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
-  let stock_clone = actor.stocks.clone();
-  let held_stock = stock_clone.get(&stock_to_add.0);
-  match held_stock {
-    Some(stock_count) => {
-        //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_add.0, stock_to_add.1 + *stock_count);
-      },
-    None => {
-      //we don't have any stock left. Just add it back.
-      actor.stocks.insert(stock_to_add.0, stock_to_add.1);
-    }
-  }
-}
-
 // send_message(0,actor.markets,BuyRequest(TransactionRequest {transaction_id: unique_id, actor_id:actor_id, stock_id: stock, price:buyer.price, quantity:buyer.quantity }));
 
 fn send_message(market_id : usize, markets: &HashMap<usize, Sender<MarketMessages>>, message: MarketMessages){
@@ -252,18 +237,6 @@ fn send_message(market_id : usize, markets: &HashMap<usize, Sender<MarketMessage
       market.send(message).unwrap();
       },
     None => {}
-  }
-}
-
-fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
-  let stock_clone = actor.stocks.clone();
-  let held_stock = stock_clone.get(&stock_to_remove.0);
-  match held_stock {
-    Some(stock_count) => {
-        //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_remove.0, *stock_count - stock_to_remove.1);
-      },
-    None => {} //TODO Should we error handle here?
   }
 }
 

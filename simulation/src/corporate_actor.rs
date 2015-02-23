@@ -9,6 +9,7 @@ use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory}
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor};
 use actor::Actor;
+use actor::{add_stock, remove_stock};
 
 /*
 This is a corporate actor. Their only desire is to sell stocks. They do not adjust
@@ -80,6 +81,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                 let stock = stock_clone.get(&stock_id);
                 match stock {
                   Some(owned_quantity) => {
+                    println!("Corporate actor {} receives stock request with quantity {} for stock {}. He currently is holding {} of that stock.", actor.id, quantity, stock_id, *owned_quantity);
                     if *owned_quantity >= quantity {
                       remove_stock(&mut actor, (stock_id, quantity));
                       actor.pending_stock = (stock_id, quantity);
@@ -127,9 +129,8 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
               if actor.pending_money > 0 {
-                let price_per_unit = commit_transaction_request.price;
                 let units = commit_transaction_request.quantity;
-                let leftover_money = actor.pending_money - price_per_unit * units;
+                let leftover_money = actor.pending_money - commit_transaction_request.price;
 
                 //make a function for adding stock.
                 add_stock(&mut actor, (commit_transaction_request.stock_id, units));
@@ -141,7 +142,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
               //if we have stock pending, look up the quantity purchased and add the money.
               //remove the pending stock
               if actor.pending_stock.1 > 0 {
-                let money = commit_transaction_request.price * commit_transaction_request.quantity;
+                let money = commit_transaction_request.price;
                 let restore_stock = (commit_transaction_request.stock_id, actor.pending_stock.1 - commit_transaction_request.quantity);
                 if restore_stock.1 > 0 {
                   add_stock(&mut actor, restore_stock);
@@ -184,33 +185,6 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
-  }
-}
-
-fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
-  let stock_clone = actor.stocks.clone();
-  let held_stock = stock_clone.get(&stock_to_add.0);
-  match held_stock {
-    Some(stock_count) => {
-        //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_add.0, stock_to_add.1 + *stock_count);
-      },
-    None => {
-      //we don't have any stock left. Just add it back.
-      actor.stocks.insert(stock_to_add.0, stock_to_add.1);
-    }
-  }
-}
-
-fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
-  let stock_clone = actor.stocks.clone();
-  let held_stock = stock_clone.get(&stock_to_remove.0);
-  match held_stock {
-    Some(stock_count) => {
-        //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_remove.0, *stock_count - stock_to_remove.1);
-      },
-    None => {} //TODO Should we error handle here?
   }
 }
 
