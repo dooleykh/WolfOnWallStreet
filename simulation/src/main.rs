@@ -14,6 +14,7 @@ pub mod corporate_actor;
 pub mod smarter_actor;
 pub mod scripted_actor;
 pub mod random_actor;
+pub mod dummy_actor_1;
 
 use messages::*;
 use market::*;
@@ -22,6 +23,7 @@ use corporate_actor::*;
 use smarter_actor::*;
 use scripted_actor::*;
 use random_actor::*;
+use dummy_actor_1::*;
 
 fn main() {
   //tx: clone for actors        rx: owned by market
@@ -32,6 +34,7 @@ fn main() {
   let scripted_actor_count = 2;
   let smarter_actor_count = 5;
   let random_actor_count = 5;
+  let dummy_actor_1_count = 4;
 
   //TODO: with spawning multiple markets make this a for loop.
   let tx_market_clone = tx_market.clone();
@@ -83,6 +86,14 @@ fn main() {
     let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
     actors_with_timers.push(actor_tx.clone());
     Thread::spawn(move || {start_random_actor(current_id, m, actor_tx, actor_rx);});
+    current_id += 1;
+  }
+
+  for _ in 0..dummy_actor_1_count{
+    let m = markets.clone();
+    let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
+    actors_with_timers.push(actor_tx.clone());
+    Thread::spawn(move || {start_dummy_actor_1(current_id, m, actor_tx, actor_rx);});
     current_id += 1;
   }
 
