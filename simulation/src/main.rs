@@ -13,6 +13,7 @@ pub mod corporate_actor;
 pub mod smarter_actor;
 pub mod scripted_actor;
 pub mod dummy_actor_1;
+pub mod dummy_actor_2;
 
 use messages::*;
 use market::*;
@@ -21,6 +22,7 @@ use corporate_actor::*;
 use smarter_actor::*;
 use scripted_actor::*;
 use dummy_actor_1::*;
+use dummy_actor_2::*;
 
 fn main() {
   //tx: clone for actors        rx: owned by market
