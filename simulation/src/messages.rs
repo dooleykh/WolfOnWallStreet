@@ -24,7 +24,7 @@ pub enum ActorMessages {
   AbortTransaction,
   History(Arc<Mutex<MarketHistory>>),
   Time(usize, usize), //Current time, max time
-  Stop
+  Stop(Sender<(usize, String)>) //Actor id, status
 }
 
 // Messages from a Market to a Teller

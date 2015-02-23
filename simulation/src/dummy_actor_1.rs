@@ -9,6 +9,7 @@ use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest}
 use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
+use actor::{add_stock, remove_stock, status};
 
 pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Dummy_Actor_1 {}", actor_id);
@@ -106,7 +107,6 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              //println!("Started Stock Request in dummy_actor_1 {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -174,9 +174,8 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
               //if we have money pending, then look up the stock id and add that quantity purchased.
               //remove the pending money
               if actor.pending_money > 0 {
-                let price_per_unit = commit_transaction_request.price;
                 let units = commit_transaction_request.quantity;
-                let leftover_money = actor.pending_money - price_per_unit * units;
+                let leftover_money = actor.pending_money - commit_transaction_request.price;
 
                 //make a function for adding stock.
                 add_stock(&mut actor, (commit_transaction_request.stock_id, units));
@@ -188,7 +187,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
               //if we have stock pending, look up the quantity purchased and add the money.
               //remove the pending stock
               if actor.pending_stock.1 > 0 {
-                let money = commit_transaction_request.price * commit_transaction_request.quantity;
+                let money = commit_transaction_request.price;
                 let restore_stock = (commit_transaction_request.stock_id, actor.pending_stock.1 - commit_transaction_request.quantity);
                 if restore_stock.1 > 0 {
                   add_stock(&mut actor, restore_stock);
@@ -196,9 +195,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              //println!("After a committed transaction in actor {} ", actor.id);
-              //print_status(&actor);
-              },
+            },
             AbortTransaction => {
               //move pending stock back into stocks.
               if actor.pending_stock.1 != 0 {
@@ -213,16 +210,14 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              //println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              //println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true},
             Time(_, _) => {},
             ReceiveActivityCount(_,_,_) => {},
-            Stop => {
-              print_status(&actor);
+            Stop(main_channel) => {
+              main_channel.send((actor.id, "(Dumb Actor 1) ".to_string() + status(&actor).as_slice())).unwrap();
               stop_flag = true;
             }
           }
@@ -231,40 +226,6 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
       Err(TryRecvError::Disconnected) => {println!("ERROR: Actor {} disconnected", actor.id);}
     }
   }
-}
-
-fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
-  let stock_clone = actor.stocks.clone();
-  let held_stock = stock_clone.get(&stock_to_add.0);
-  match held_stock {
-    Some(stock_count) => {
-        //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_add.0, stock_to_add.1 + *stock_count);
-      },
-    None => {
-      //we don't have any stock left. Just add it back.
-      actor.stocks.insert(stock_to_add.0, stock_to_add.1);
-    }
-  }
-}
-
-fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
-  let stock_clone = actor.stocks.clone();
-  let held_stock = stock_clone.get(&stock_to_remove.0);
-  match held_stock {
-    Some(stock_count) => {
-        //we have some stock. We need to add to our reserve.
-        actor.stocks.insert(stock_to_remove.0, *stock_count - stock_to_remove.1);
-      },
-    None => {} //TODO Should we error handle here?
-  }
-}
-
-fn print_status(actor: &Actor) {
-  for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Dummy Actor_1 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
-  }
-  println!("Dummy Actor_1 {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

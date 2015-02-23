@@ -48,12 +48,10 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
   //Start the receive loop
   loop {
     let message = market_rx.recv().unwrap();
-    //println!("There have been {} transactions involving Stock 0", market.history.lock().unwrap().transaction_count(0));
     match message {
       SellRequest(request) => {route(false, request, &market)},
       BuyRequest(request) => {route(true, request, &market)},
       Commit(actor_id) => {
-        // println!("Commit {}", actor_id);
         if has_active_transaction(&market, actor_id) {
           market.committed_actors.push(actor_id);
           let tup = get_active_transaction_involving(&market, actor_id);
@@ -67,7 +65,7 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
             remove_active_transaction(&mut market, &tup);
             move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
 
-            //println!("Market {} commited a transaction, stock {} was sold for {} with quantity {}", market.id, tup.0.stock_id, tup.0.price, tup.0.quantity);
+            println!("Market {} commited a transaction, stock {} was sold for {} with quantity {}", market.id, tup.0.stock_id, tup.0.price, tup.0.quantity);
             let stock_id = tup.0.stock_id;
             let mut h = market.history.lock().unwrap();
             match h.history.entry(stock_id) {
@@ -78,7 +76,6 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
         }
       }
       Cancel(actor_id) => {
-        // println!("Cancel {}", actor_id);
         if has_active_transaction(&market, actor_id) {
           let tup = get_active_transaction_involving(&market, actor_id);
           route_actor_message(&market, tup.0.actor_id, AbortTransaction);
@@ -100,12 +97,9 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
       MatchRequest(buyer, seller) => {
         if has_active_transaction(&market, buyer.actor_id) || has_active_transaction(&market, seller.actor_id) {
           //add to pending transactions
-          // println!("Market had an active transaction for one of the parties {} or {}", buyer.actor_id, seller.actor_id);
-          // println!("Market active transactions: {:?}", market.active_transactions);
           market.pending_transactions.push((buyer, seller));
         }
         else {
-          // println!("Market is activating transactions for one/both of the parties {} or {}", buyer.actor_id, seller.actor_id);
           activate_transactions(&mut market, buyer, seller);
         }
       },
@@ -137,7 +131,7 @@ fn activate_transactions(market: &mut Market, mut buyer: TransactionRequest, mut
   let smaller_quantity = cmp::min(seller.quantity, buyer.quantity);
   buyer.quantity = smaller_quantity;
   seller.quantity = smaller_quantity;
-  let amount_to_pay = buyer.quantity * buyer.price;
+  let amount_to_pay = buyer.price;
   let buyer_request = MoneyRequest {market_id: market.id, amount: amount_to_pay};
   let seller_request = StockRequest {market_id: market.id, stock_id: seller.stock_id, quantity: seller.quantity};
 
@@ -148,20 +142,25 @@ fn activate_transactions(market: &mut Market, mut buyer: TransactionRequest, mut
 
 fn move_pending_to_active(market: &mut Market, actor1: usize, actor2: usize) {
   //actor 1
+  let mut actor_zero_in_transaction = true;
+  let mut actor_one_in_transaction = true;
+
   for i in 0..market.pending_transactions.len() {
     let pending_transaction = market.pending_transactions[i].clone();
     if pending_transaction.0.actor_id == actor1 {
       if !has_active_transaction(&market, pending_transaction.1.actor_id) {
-        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
-        remove(&mut market.pending_transactions, pending_transaction);
-        break;
+        // activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        // remove(&mut market.pending_transactions, pending_transaction);
+        // break;
+        actor_one_in_transaction = false;
       }
     }
     if pending_transaction.1.actor_id == actor1 {
       if !has_active_transaction(&market, pending_transaction.0.actor_id) {
-        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
-        remove(&mut market.pending_transactions, pending_transaction);
-        break;
+        // activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        // remove(&mut market.pending_transactions, pending_transaction);
+        // break;
+        actor_zero_in_transaction = false;
       }
     }
   }
@@ -171,16 +170,23 @@ fn move_pending_to_active(market: &mut Market, actor1: usize, actor2: usize) {
     let pending_transaction = market.pending_transactions[i].clone();
     if pending_transaction.0.actor_id == actor2 {
       if !has_active_transaction(&market, pending_transaction.1.actor_id) {
-        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
-        remove(&mut market.pending_transactions, pending_transaction);
-        break;
+        // activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        // remove(&mut market.pending_transactions, pending_transaction);
+        // break;
+        actor_one_in_transaction = false;
       }
     }
     if pending_transaction.1.actor_id == actor2 {
       if !has_active_transaction(&market, pending_transaction.0.actor_id) {
-        activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
-        remove(&mut market.pending_transactions, pending_transaction);
-        break;
+        // activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+        // remove(&mut market.pending_transactions, pending_transaction);
+        // break;
+        actor_zero_in_transaction = false;
+        if !actor_zero_in_transaction && !actor_one_in_transaction {
+          activate_transactions(market, pending_transaction.0.clone(), pending_transaction.1.clone());
+          remove(&mut market.pending_transactions, pending_transaction);
+          break;
+        }
       }
     }
   }

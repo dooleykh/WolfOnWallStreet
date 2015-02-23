@@ -1,4 +1,4 @@
-#![feature(io, rand, std_misc)]
+#![feature(core, io, rand, std_misc)]
 #![allow(deprecated)]
 use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver, channel};
@@ -32,10 +32,10 @@ fn main() {
   let (tx_market, rx_market): (Sender<MarketMessages>, Receiver<MarketMessages>) = channel();
 
   let standard_actor_count = 5;
-  let corporate_actor_count = 3;
-  let scripted_actor_count = 2;
+  let corporate_actor_count = 5;
+  let scripted_actor_count = 10;
   let smarter_actor_count = 5;
-  let random_actor_count = 5;
+  let random_actor_count = 15;
   let dummy_actor_1_count = 4;
   let dummy_actor_2_count = 4;
 
@@ -116,9 +116,30 @@ fn main() {
     timer::sleep(Duration::milliseconds(tick as i64));
   }
 
+  let (my_tx, my_rx): (Sender<(usize, String)>, Receiver<(usize, String)>) = channel();
   for tx in actors_with_timers.iter() {
-    tx.send(ActorMessages::Stop).unwrap();
+    tx.send(ActorMessages::Stop(my_tx.clone())).unwrap();
   }
 
-  timer::sleep(Duration::milliseconds(1000));
+  let mut responses: Vec<String> = Vec::with_capacity(actors_with_timers.len());
+  for _ in 0..actors_with_timers.len() {
+    responses.push("".to_string());
+  }
+
+  let mut count = 0;
+  loop {
+    match my_rx.recv().unwrap() {
+      (id, status) => {
+        responses[id] = status;
+        count += 1;
+        if responses.len() == count {
+          break;
+        }
+      }
+    }
+  }
+  println!("\n\nFinal Result\n------------");
+  for status in responses.iter() {
+    println!("{}", status);
+  }
 }
