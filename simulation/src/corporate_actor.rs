@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{SellRequest, Commit, Cancel, RegisterActor};
 use actor::Actor;
 
@@ -15,8 +15,9 @@ This is a corporate actor. Their only desire is to sell stocks. They do not adju
 their prices and instead only want to get their stock out into the market.
 */
 
-pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, stock_id: usize, starting_quantity: usize) {
-  println!("Starting Corporate Actor {}", actor_id);
+pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, stock_id: usize, starting_quantity: usize, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
+  // println!("Starting Corporate Actor {}", actor_id);
+  let mut stop_flag = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
@@ -27,12 +28,17 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
   actor.stocks.insert(stock_id, starting_quantity);
   let next_transaction_id = 0;
 
-  let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
+  // let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
   for (_, market_tx) in actor.markets.iter() {
     market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
   }
 
   loop {
+    if stop_flag {
+      timer::sleep(Duration::milliseconds(1000));
+      continue;
+    }
+
     //Logic
     if actor.pending_stock.1 == 0 {
       for (stock_id, quantity) in actor.stocks.iter() {
@@ -53,7 +59,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              println!("Started Stock Request in corporate actor {}", actor.id);
+              // println!("Started Stock Request in corporate actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -88,7 +94,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                   }
                 }
               }
-              print_status(&actor);
+              // print_status(&actor);
               },
             MoneyRequest(money_request) => {
               let market_tx;
@@ -115,7 +121,7 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                   market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
-              print_status(&actor);
+              // print_status(&actor);
               },
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
@@ -143,8 +149,8 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              println!("After a committed transaction in corporate actor {} ", actor.id);
-              print_status(&actor);
+              // println!("After a committed transaction in corporate actor {} ", actor.id);
+              // print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -154,21 +160,25 @@ pub fn start_corporate_actor(actor_id: usize, existing_markets: HashMap<usize, S
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              for (stock_id, quantity) in actor.stocks.iter() {
-                println!("After aborting the transaction, corporate actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              }
+              // for (stock_id, quantity) in actor.stocks.iter() {
+              //   println!("After aborting the transaction, corporate actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+              // }
 
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              println!("After aborting the transaction, corporate actor {} now has {} money.", actor.id, actor.money);
+              // println!("After aborting the transaction, corporate actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
               actor.history = history;}
             Time(_, _) => {},
-            ReceiveActivityCount(_,_,_) => {}
+            ReceiveActivityCount(_,_,_) => {},
+            Stop => {
+              print_status(&actor);
+              stop_flag = true;
+            }
           }
         },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(1));},

@@ -4,14 +4,16 @@ use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
+use std::cmp::max;
 
 use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
 
 pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Actor {}", actor_id);
+  let mut stop_flag = false;
   let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
@@ -34,6 +36,11 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
   }
 
   loop {
+    if stop_flag {
+      timer::sleep(Duration::milliseconds(1000));
+      continue;
+    }
+
     if init_history {
       let local_stocks;
       {
@@ -44,13 +51,13 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
           match actor.stocks.get(stock) {
             Some(count) => {
                 for (_, market_tx) in actor.markets.iter() {
-                  let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: 100 - low_bid, quantity: *count};
+                  let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: max(100 - low_bid, 1), quantity: *count};
                   market_tx.send(SellRequest(t)).unwrap();
                 }
               },
             None => {
               for (_, market_tx) in actor.markets.iter() {
-                let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: low_bid, quantity: 300};
+                let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: low_bid, quantity: 10};
                 market_tx.send(BuyRequest(t)).unwrap();
               }
             }
@@ -60,7 +67,7 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
       else if current_time < 3 * max_time / 4 {
         for (stock, count) in actor.stocks.iter() {
           for (_, market_tx) in actor.markets.iter() {
-            let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: 100 - low_bid, quantity: *count};
+            let t = TransactionRequest{actor_id: actor.id, transaction_id: 0, stock_id: *stock, price: max(100 - low_bid, 1), quantity: *count};
             market_tx.send(SellRequest(t)).unwrap();
           }
         }
@@ -91,7 +98,7 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              println!("Started Stock Request in actor {}", actor.id);
+              // println!("Started Stock Request in actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -126,7 +133,7 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
                   }
                 }
               }
-              print_status(&actor);
+              // print_status(&actor);
               },
             MoneyRequest(money_request) => {
               let market_tx;
@@ -153,7 +160,7 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
                   market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
-              print_status(&actor);
+              // print_status(&actor);
               },
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
@@ -181,8 +188,8 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              println!("After a committed transaction in actor {} ", actor.id);
-              print_status(&actor);
+              // println!("After a committed transaction in actor {} ", actor.id);
+              // print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -192,19 +199,19 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              for (stock_id, quantity) in actor.stocks.iter() {
-                println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              }
+              // for (stock_id, quantity) in actor.stocks.iter() {
+              //   // println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+              // }
 
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
+              // println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              // println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true;},
             Time(current, max) => {
@@ -212,8 +219,12 @@ pub fn start_scripted_actor(actor_id: usize, existing_markets: HashMap<usize, Se
               current_time = current;
               max_time = max;
             },
-            ReceiveActivityCount(stock_id, buying, count) => {
-              println!("Scripted Actor received an activity count. Stock: {}, Buying: {}, Count: {}", stock_id, buying, count);
+            ReceiveActivityCount(_, _, _) => {
+              // println!("Scripted Actor received an activity count. Stock: {}, Buying: {}, Count: {}", stock_id, buying, count);
+            },
+            Stop => {
+              print_status(&actor);
+              stop_flag = true;
             }
           }
         },
@@ -252,9 +263,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("Scripted Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Actor {} has {} money.", (*actor).id, (*actor).money);
+  println!("Scripted Actor {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

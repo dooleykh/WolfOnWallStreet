@@ -22,8 +22,8 @@ pub enum ActorMessages {
   CommitTransaction(TransactionRequest), //The information related to the transaction
   AbortTransaction,
   History(Arc<Mutex<MarketHistory>>),
-  Time(usize, usize) //Current time, max time
-
+  Time(usize, usize), //Current time, max time
+  Stop
 }
 
 // Messages from a Market to a Teller
@@ -49,6 +49,14 @@ impl fmt::Display for TransactionRequest {
       self.transaction_id, self.actor_id, self.stock_id, self.price, self.quantity)
   }
 }
+
+impl fmt::Debug for TransactionRequest {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "[t_id: {}, a_id: {}, s_id: {}, p: {}, q: {}]",
+      self.transaction_id, self.actor_id, self.stock_id, self.price, self.quantity)
+  }
+}
+
 
 #[derive(Clone)]
 pub struct StockRequest {
@@ -83,6 +91,83 @@ impl MarketHistory {
     match self.history.get(&stock_id) {
       Some(transactions) => transactions.len(),
       None => 0
+    }
+  }
+
+  pub fn last_transaction_for_stock(&self, stock_id: usize) -> Option<(TransactionRequest, TransactionRequest)> {
+    match self.history.get(&stock_id) {
+      Some(transactions) => {
+        if transactions.len() > 0 {
+          Some(transactions[transactions.len() - 1].clone())
+        }
+        else {
+          None
+        }
+      },
+      None => None
+    }
+  }
+
+  pub fn last_sold_price(&self, stock_id: usize) -> Option<usize> {
+    match self.history.get(&stock_id) {
+      Some(transactions) => {
+        if transactions.len() > 0 {
+          Some(transactions[transactions.len() - 1].0.price)
+        }
+        else {
+          None
+        }
+      },
+      None => None
+    }
+  }
+
+  pub fn increasing(&self, stock_id: usize) -> bool {
+    match self.history.get(&stock_id) {
+      Some(transactions) => {
+        if transactions.len() > 1 {
+          transactions[transactions.len() - 1].0.price > transactions[transactions.len() - 2].0.price
+        }
+        else {
+          false
+        }
+      },
+      None => false
+    }
+  }
+
+  pub fn decreasing(&self, stock_id: usize) -> bool {
+    match self.history.get(&stock_id) {
+      Some(transactions) => {
+        if transactions.len() > 1 {
+          transactions[transactions.len() - 1].0.price < transactions[transactions.len() - 2].0.price
+        }
+        else {
+          false
+        }
+      },
+      None => false
+    }
+  }
+
+  pub fn quantity_sold(&self, stock_id: usize) -> usize {
+    match self.history.get(&stock_id) {
+      Some(transactions) => transactions.len(),
+      None => 0
+    }
+  }
+
+  pub fn can_purchase(&self, stock_id: usize, price: usize) -> bool {
+    match self.history.get(&stock_id) {
+      Some(transactions) => {
+        if transactions.len() > 1 {
+          transactions[transactions.len() - 1].0.price <= price
+        }
+        else {
+          false
+        }
+      },
+      None => false
     }
   }
 }

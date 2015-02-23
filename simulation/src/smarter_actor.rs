@@ -1,13 +1,14 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::old_io::timer;
 use std::time::Duration;
+use std::cmp::max;
 
 use messages::{ActorMessages, TransactionRequest, MarketMessages, MarketHistory};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
-use messages::MarketMessages::{BuyRequest, SellRequest, Commit, Cancel, RegisterActor, MatchRequest};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
+use messages::MarketMessages::{BuyRequest, SellRequest, Commit, Cancel, RegisterActor};
 use actor::Actor;
 
 // Smarter actor
@@ -16,6 +17,7 @@ use actor::Actor;
 
 pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
   println!("Starting Smarter_Actor {}", actor_id);
+  let mut stop_flag = false;
   let mut init_history = false;
   let mut actor = Actor { id: actor_id,
                           money: 100,
@@ -34,63 +36,61 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
   }
 
   loop {
+    if stop_flag {
+      timer::sleep(Duration::milliseconds(1000));
+      continue;
+    }
     //Logic
     let mark_clone = actor.markets.clone();
     let stock_clone = actor.stocks.clone();
 
-    if(init_history){
+    if init_history {
       let hist = actor.history.lock().unwrap();
 
       // For each stock in history
       for stock in hist.stocks.iter(){
-        match(hist.history.get(stock)){
-          Some(mut transactions) => {
-            // Check that stock's last transaction
-            if(transactions.len() > 0){
-              let (buyer,seller) = transactions[transactions.len()-1].clone();
-              match buy_requests.clone().get(&0){
-                Some(stock_requests) => {
-                  match stock_requests.get(stock){
-                    Some(&(request_price,request_quantity)) => {
-                      // If it's price is above ours request a sell
-                      if(buyer.price > request_price){
-                        let trans : TransactionRequest  = TransactionRequest   {  transaction_id: unique_id
-                                                                                , actor_id:actor_id
-                                                                                , stock_id: stock.clone()
-                                                                                , price:buyer.price
-                                                                                , quantity:request_quantity
-                                                                                };
-                        send_message(0,&mark_clone,SellRequest(trans.clone()));
-                        println!("smarter_actor : {} submitted a SellRequest : {}",actor_id,trans);
-                        unique_id = unique_id + 1;
-                      }
-                    },
-                    None => {
-                      // Otherwise lets try to buy some stock to sell later
-                      let request_quantity = (actor.money/10)/seller.price;
-                      let trans : TransactionRequest  = TransactionRequest{   transaction_id: unique_id
-                                                                            , actor_id:actor_id
-                                                                            , stock_id: stock.clone()
-                                                                            , price:seller.price
-                                                                            , quantity:request_quantity
-                                                                          };
-                      send_message(0,&mark_clone,BuyRequest(trans.clone()));
+        match hist.last_transaction_for_stock(*stock) {
+          Some((buyer, seller)) => {
+            match buy_requests.clone().get(&0){
+              Some(stock_requests) => {
+                match stock_requests.get(stock){
+                  Some(&(request_price,request_quantity)) => {
+                    // If it's price is above ours request a sell
+                    if buyer.price > request_price {
+                      let trans : TransactionRequest  = TransactionRequest   {  transaction_id: unique_id
+                                                                              , actor_id:actor_id
+                                                                              , stock_id: stock.clone()
+                                                                              , price:buyer.price
+                                                                              , quantity:request_quantity
+                                                                              };
+                      send_message(0,&mark_clone,SellRequest(trans));
+                      // println!("smarter_actor : {} submitted a SellRequest : {}",actor_id,trans);
                       unique_id = unique_id + 1;
-                      println!("smarter_actor : {} submitted a BuyRequest : {}",actor_id,trans);
                     }
+                  },
+                  None => {
+                    // Otherwise lets try to buy some stock to sell later
+                    let request_quantity = (actor.money/10)/max(seller.price, 1);
+                    let trans : TransactionRequest  = TransactionRequest{   transaction_id: unique_id
+                                                                          , actor_id:actor_id
+                                                                          , stock_id: stock.clone()
+                                                                          , price:seller.price
+                                                                          , quantity:request_quantity
+                                                                        };
+                    send_message(0,&mark_clone,BuyRequest(trans));
+                    unique_id = unique_id + 1;
+                    // println!("smarter_actor : {} submitted a BuyRequest : {}",actor_id,trans);
                   }
-                },
-                None =>{
-                  buy_requests.insert(0,HashMap::new());
-                  } // Market didn't exist?
+                }
+              },
+              None =>{
+                buy_requests.insert(0,HashMap::new());
+                } // Market didn't exist?
 
-              }
             }
-
-            },
+          },
           None => {}
         }
-
       }
     }
 
@@ -98,7 +98,7 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              println!("Started Stock Request in smarter_actor {}", actor.id);
+              // println!("Started Stock Request in smarter_actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -133,7 +133,7 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                   }
                 }
               }
-              print_status(&actor);
+              // print_status(&actor);
               },
             MoneyRequest(money_request) => {
               let market_tx;
@@ -160,7 +160,7 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                   market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
-              print_status(&actor);
+              // print_status(&actor);
               },
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
@@ -188,8 +188,8 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              println!("After a committed transaction in smarter_actor {} ", actor.id);
-              print_status(&actor);
+              // println!("After a committed transaction in smarter_actor {} ", actor.id);
+              // print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -199,26 +199,28 @@ pub fn start_smarter_actor(actor_id: usize, existing_markets: HashMap<usize, Sen
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              for (stock_id, quantity) in actor.stocks.iter() {
-                println!("After aborting the transaction, smarter_actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              }
+              // for (stock_id, quantity) in actor.stocks.iter() {
+              //   println!("After aborting the transaction, smarter_actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+              // }
 
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              println!("After aborting the transaction, smarter_actor {} now has {} money.", actor.id, actor.money);
+              // println!("After aborting the transaction, smarter_actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              println!("Smarter_actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              // println!("Smarter_actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
               init_history = true;
               },
-            Time(current, max) => {
-              println!("Smarter_actor {} received time {}", actor.id, current);
-            },
+            Time(_, _) => {},
             ReceiveActivityCount(_,_,_) => {},
+            Stop => {
+              print_status(&actor);
+              stop_flag = true;
+            }
           }
         },
       Err(TryRecvError::Empty) => {timer::sleep(Duration::milliseconds(10));},
@@ -247,7 +249,7 @@ fn add_stock(actor: &mut Actor, stock_to_add: (usize, usize)) {
 fn send_message(market_id : usize, markets: &HashMap<usize, Sender<MarketMessages>>, message: MarketMessages){
   match markets.get(&market_id){
     Some(market) => {
-      market.send(message);
+      market.send(message).unwrap();
       },
     None => {}
   }
@@ -267,9 +269,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("Smarter Actor {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Actor {} has {} money.", (*actor).id, (*actor).money);
+  println!("Smarter Actor {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {
