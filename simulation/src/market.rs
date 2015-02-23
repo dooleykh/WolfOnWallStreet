@@ -67,7 +67,7 @@ pub fn start_market(market_id: usize, market_tx: Sender<MarketMessages>, market_
             remove_active_transaction(&mut market, &tup);
             move_pending_to_active(&mut market, tup.0.actor_id, tup.1.actor_id);
 
-            println!("Market {} commited a transaction, stock {} was sold for {}", market.id, tup.0.stock_id, tup.0.price);
+            println!("Market {} commited a transaction, stock {} was sold for {} with quantity {}", market.id, tup.0.stock_id, tup.0.price, tup.0.quantity);
             let stock_id = tup.0.stock_id;
             let mut h = market.history.lock().unwrap();
             match h.history.entry(stock_id) {

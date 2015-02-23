@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::rand;
+use std::rand::Rng;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
@@ -10,8 +12,11 @@ use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, Abo
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
 
-pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
-  println!("Starting Dummy_Actor_1 {}", actor_id);
+pub fn start_random_actor(actor_id: usize, existing_markets: HashMap<usize, Sender<MarketMessages>>, actor_tx: Sender<ActorMessages>, actor_rx: Receiver<ActorMessages>) {
+  let mut stop_flag = false;
+  let mut init_history = false;
+  let mut rng = rand::thread_rng();
+  // println!("Starting Actor {}", actor_id);
   let mut actor = Actor { id: actor_id,
                           money: 100,
                           stocks: HashMap::new(),
@@ -20,93 +25,52 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                           markets: existing_markets,
                           history: Arc::new(Mutex::new(MarketHistory {history: HashMap::new(), stocks: vec![]}))};
 
-  //Register the actor with every market
   for (_, market_tx) in actor.markets.iter() {
     market_tx.send(RegisterActor(actor.id, actor_tx.clone())).unwrap();
   }
-
-  //Number of stocks available to buy
-  let mut init_history = false;
-  let mut stop_flag = false;
-  let mut to_sell_prices = HashMap::new();
-  let mut stock_id_incr = 0;
-
 
   loop {
     if stop_flag {
       timer::sleep(Duration::milliseconds(1000));
       continue;
     }
-
     //Logic
-    let mark_clone = actor.markets.clone();
-    let stock_clone = actor.stocks.clone();
 
-    //buying and selling decisions
-    ////////////////////////////////////////////////////////////////////
     if init_history {
-      //Get variables for the actor's stocks
-      let local_stocks;
-      {
-        local_stocks = actor.history.lock().unwrap().stocks.clone();
-      }
+      for stock in actor.history.lock().unwrap().stocks.iter() {
+          for (_, market_tx) in actor.markets.iter() {
+            if actor.money != 0 {
+              let p = rng.gen::<usize>() % actor.money + 1;
+              let q = rng.gen::<usize>() % 150;
+              let t = TransactionRequest {transaction_id: actor.id, actor_id: actor.id, stock_id: *stock, price: p, quantity: q};
 
-      //Iterate through the actor's stocks
-      for stock in local_stocks.iter() {
-        match actor.stocks.get(stock) {
-          //If the actor has some of a stock
-          Some(_) => {
-            //And he has not yet sent out a sell request
-            if to_sell_prices.contains_key(stock) {
-              //Get the price he should sell it at (remove from HashMap)
-              let sell_price = to_sell_prices.remove(stock);
-              match sell_price {
-                Some(price) => {
-                  for (_, market_tx) in actor.markets.iter() {
-                    //Send out a sell request to sell it
-                    let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
-                    market_tx.send(SellRequest(t)).unwrap();
-                    stock_id_incr = stock_id_incr + 1;
-                  }
-                },
-                None => {}
-              }
+              market_tx.send(BuyRequest(t)).unwrap();
             }
           }
-          //If the actor has none of a stock
-          None => {
-            if !to_sell_prices.contains_key(stock) {
-              //Make the price he should buy it at the most recently bought price
-              let buy_price = actor.history.lock().unwrap().last_sold_price(*stock);
-              match buy_price {
-                //If the stock was last bought at a price
-                Some(price) => {
-                  //If the actor can afford to buy it
-                  if actor.money > price {
-                    for (_, market_tx) in actor.markets.iter() {
-                      let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
-                      market_tx.send(BuyRequest(t)).unwrap();
-                      stock_id_incr = stock_id_incr + 1;
-                      to_sell_prices.insert(*stock, price * 2);
-                    }
-                  }
-                },
-                //If the stock has not been bought yet
-                None => {}
-              }
+      }
+      for (stock, count) in actor.stocks.iter() {
+        for (_, market_tx) in actor.markets.iter() {
+          if *count != 0  {
+            let p = rng.gen::<usize>() % 150 + 1;
+            let q = rng.gen::<usize>() % *count + 1;
+            let t = TransactionRequest {transaction_id: actor.id, actor_id: actor.id, stock_id: *stock, price: p, quantity: q};
+
+            if q != 0 {
+              market_tx.send(SellRequest(t)).unwrap();
             }
           }
         }
       }
-
     }
-    /////////////////////////////////////////////////////////////////////
+
+    let mark_clone = actor.markets.clone();
+    let stock_clone = actor.stocks.clone();
 
     match actor_rx.try_recv() {
       Ok(message) => {
           match message {
             StockRequest(stock_request) => {
-              //println!("Started Stock Request in dummy_actor_1 {}", actor.id);
+              // println!("Started Stock Request in actor {}", actor.id);
               let market_tx;
               let tx_text = mark_clone.get(&stock_request.market_id);
               match tx_text {
@@ -141,7 +105,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                   }
                 }
               }
-              //print_status(&actor);
+              // print_status(&actor);
               },
             MoneyRequest(money_request) => {
               let market_tx;
@@ -168,7 +132,7 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                   market_tx.send(Cancel(actor.id)).unwrap();
                 }
               }
-              //print_status(&actor);
+              // print_status(&actor);
               },
             CommitTransaction(commit_transaction_request) => {
               //if we have money pending, then look up the stock id and add that quantity purchased.
@@ -196,8 +160,8 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
               }
-              //println!("After a committed transaction in actor {} ", actor.id);
-              //print_status(&actor);
+              // println!("After a committed transaction in actor {} ", actor.id);
+              // print_status(&actor);
               },
             AbortTransaction => {
               //move pending stock back into stocks.
@@ -207,18 +171,21 @@ pub fn start_dummy_actor_1(actor_id: usize, existing_markets: HashMap<usize, Sen
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
+              // for (stock_id, quantity) in actor.stocks.iter() {
+              //   // println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
+              // }
 
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
                 actor.pending_money = 0;
               }
-              //println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
+              // println!("After aborting the transaction, actor {} now has {} money.", actor.id, actor.money);
             },
             History(history) => {
-              //println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
+              // println!("Actor {} received history {}", actor.id, *(history.lock().unwrap()));
               actor.history = history;
-              init_history = true},
+              init_history = true;},
             Time(_, _) => {},
             ReceiveActivityCount(_,_,_) => {},
             Stop => {
@@ -262,9 +229,9 @@ fn remove_stock(actor: &mut Actor, stock_to_remove: (usize, usize)) {
 
 fn print_status(actor: &Actor) {
   for (stock_id, quantity) in (*actor).stocks.iter() {
-    println!("Dummy Actor_1 {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
+    println!("Random {} now has StockId: {} Quantity: {}", (*actor).id, *stock_id, *quantity);
   }
-  println!("Dummy Actor_1 {} has {} money.", (*actor).id, (*actor).money);
+  println!("Random {} has {} money.", (*actor).id, (*actor).money);
 }
 
 fn has_pending_transaction(actor: &Actor) -> bool {

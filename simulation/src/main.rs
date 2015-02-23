@@ -1,4 +1,5 @@
-#![feature(io, std_misc)]
+#![feature(io, rand, std_misc)]
+#![allow(deprecated)]
 use std::collections::HashMap;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::thread::Thread;
@@ -12,6 +13,7 @@ pub mod teller;
 pub mod corporate_actor;
 pub mod smarter_actor;
 pub mod scripted_actor;
+pub mod random_actor;
 pub mod dummy_actor_1;
 pub mod dummy_actor_2;
 
@@ -21,6 +23,7 @@ use actor::*;
 use corporate_actor::*;
 use smarter_actor::*;
 use scripted_actor::*;
+use random_actor::*;
 use dummy_actor_1::*;
 use dummy_actor_2::*;
 
@@ -32,6 +35,7 @@ fn main() {
   let corporate_actor_count = 3;
   let scripted_actor_count = 2;
   let smarter_actor_count = 5;
+  let random_actor_count = 5;
   let dummy_actor_1_count = 4;
 
   //TODO: with spawning multiple markets make this a for loop.
@@ -76,6 +80,14 @@ fn main() {
     let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
     actors_with_timers.push(actor_tx.clone());
     Thread::spawn(move || {start_smarter_actor(current_id, m, actor_tx, actor_rx);});
+    current_id += 1;
+  }
+
+  for _ in 0..random_actor_count{
+    let m = markets.clone();
+    let (actor_tx, actor_rx): (Sender<ActorMessages>, Receiver<ActorMessages>) = channel();
+    actors_with_timers.push(actor_tx.clone());
+    Thread::spawn(move || {start_random_actor(current_id, m, actor_tx, actor_rx);});
     current_id += 1;
   }
 

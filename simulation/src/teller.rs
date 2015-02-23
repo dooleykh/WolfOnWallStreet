@@ -26,12 +26,18 @@ pub fn start_teller(teller_id: usize, market_tx: Sender<MarketMessages>, teller_
         }
       }
       BuyRequest(request) => {
+        if request.quantity == 0 || request.price == 0 {
+          continue;
+        }
         teller.buy_requests.push(request.clone());
         match make_buy_request(&mut teller) {
           Some(sell) => {market_tx.send(MatchRequest(request, sell)).unwrap();}
           None => {} };},
         //println!("RECEIVED BUY REQUEST")},
       SellRequest(request) => {
+        if request.quantity == 0 || request.price == 0 {
+          continue;
+        }
         teller.sell_requests.push(request.clone());
         match make_sell_request(&mut teller) {
           Some(buy) => {market_tx.send(MatchRequest(buy, request)).unwrap();}
