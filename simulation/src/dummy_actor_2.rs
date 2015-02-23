@@ -6,7 +6,7 @@ use std::old_io::timer;
 use std::time::Duration;
 
 use messages::{MarketMessages, MarketHistory, ActorMessages, TransactionRequest};
-use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount};
+use messages::ActorMessages::{StockRequest, MoneyRequest, CommitTransaction, AbortTransaction, History, Time, ReceiveActivityCount, Stop};
 use messages::MarketMessages::{BuyRequest, Commit, Cancel, RegisterActor, SellRequest};
 use actor::Actor;
 
@@ -29,14 +29,13 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
   let mut max_time: usize = 0;
 
   //Number of stocks available to buy
-  let numStocks = actor.stocks.len();
   let mut init_history = false;
   let mut stop_flag = false;
-  let mut toSellPrices = HashMap::new();
+  let mut to_sell_prices = HashMap::new();
   let mut stock_id_incr = 0;
-  let mut activeBuyRequests = HashMap::new();
-  let mut activeSellRequests = HashMap::new();
-  let mut backupSellRequests = HashMap::new();
+  let mut active_buy_requests = HashMap::new();
+  let mut active_sell_requests = HashMap::new();
+  let mut backup_sell_requests = HashMap::new();
 
 
   loop {
@@ -51,15 +50,6 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
 
     //buying and selling decisions
     ////////////////////////////////////////////////////////////////////
-    if current_time > 3 * (max_time / 4) {
-      for transaction_id in activeBuyRequests.iter() {
-
-      }
-      for transaction_id in activeSellRequests.iter() {
-
-      }
-    }
-
 
     if init_history {
       //Get variables for the actor's stocks
@@ -72,21 +62,21 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
       for stock in local_stocks.iter() {
         match actor.stocks.get(stock) {
           //If the actor has some of a stock
-          Some(count) => {
+          Some(_) => {
 
             //And he has not yet sent out a sell request
-            if toSellPrices.contains_key(stock) {
+            if to_sell_prices.contains_key(stock) {
               //Get the price he should sell it at (remove from HashMap)
-              let sell_price = toSellPrices.remove(stock);
+              let sell_price = to_sell_prices.remove(stock);
               match sell_price {
                 Some(price) => {
                   for (_, market_tx) in actor.markets.iter() {
                     //Send out a sell request to sell it
                     let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
                     market_tx.send(SellRequest(t)).unwrap();
-                    activeSellRequests.insert(stock_id_incr, *stock);
+                    active_sell_requests.insert(stock_id_incr, *stock);
                     stock_id_incr = stock_id_incr + 1;
-                    backupSellRequests.insert(*stock, price / 2);
+                    backup_sell_requests.insert(*stock, price / 2);
                   }
                 },
                 None => {}
@@ -94,8 +84,8 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
             }
 
             if current_time > 3 * (max_time / 4) {
-              match backupSellRequests.remove(stock) {
-                Some(price) => {
+              match backup_sell_requests.remove(stock) {
+                Some(_) => {
                   for (_, market_tx) in actor.markets.iter() {
                     let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: 0, quantity: 1};
                     market_tx.send(SellRequest(t)).unwrap();
@@ -109,7 +99,7 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
           //If the actor has none of a stock
           None => {
             if current_time < 3 * (max_time / 4) {
-              if !toSellPrices.contains_key(stock) {
+              if !to_sell_prices.contains_key(stock) {
                 //Make the price he should buy it at the most recently bought price
                 let buy_price = actor.history.lock().unwrap().last_sold_price(*stock);
                 match buy_price {
@@ -120,9 +110,9 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                       for (_, market_tx) in actor.markets.iter() {
                         let t = TransactionRequest{actor_id: actor.id, transaction_id: stock_id_incr, stock_id: *stock, price: price, quantity: 1};
                         market_tx.send(BuyRequest(t)).unwrap();
-                        activeBuyRequests.insert(stock_id_incr, *stock);
+                        active_buy_requests.insert(stock_id_incr, *stock);
                         stock_id_incr = stock_id_incr + 1;
-                        toSellPrices.insert(*stock, price * 2);
+                        to_sell_prices.insert(*stock, price * 2);
                       }
                     }
                   },
@@ -221,7 +211,7 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.pending_money = 0;
 
                 //Remove this stock from the active buy requests
-                activeBuyRequests.remove(&(commit_transaction_request.transaction_id));
+                active_buy_requests.remove(&(commit_transaction_request.transaction_id));
               }
 
               //if we have stock pending, look up the quantity purchased and add the money.
@@ -235,8 +225,8 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 actor.money = actor.money + money;
                 actor.pending_stock = (0,0);
 
-                activeSellRequests.remove(&(commit_transaction_request.transaction_id));
-                backupSellRequests.remove(&(commit_transaction_request.stock_id));
+                active_sell_requests.remove(&(commit_transaction_request.transaction_id));
+                backup_sell_requests.remove(&(commit_transaction_request.stock_id));
               }
               //println!("After a committed transaction in actor {} ", actor.id);
               //print_status(&actor);
@@ -249,10 +239,6 @@ pub fn start_dummy_actor_2(actor_id: usize, existing_markets: HashMap<usize, Sen
                 //now that we have moved it. Clear out the pending stock.
                 actor.pending_stock = (0,0); //setting the quantity to zero clears it.
               }
-              for (stock_id, quantity) in actor.stocks.iter() {
-                //println!("After aborting the transaction, actor {} now has StockId: {} Quantity: {}", actor.id, *stock_id, *quantity);
-              }
-
               //move pending money back into money.
               if actor.pending_money > 0 {
                 actor.money = actor.money + actor.pending_money;
