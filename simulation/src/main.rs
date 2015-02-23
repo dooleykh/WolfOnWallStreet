@@ -12,6 +12,7 @@ pub mod teller;
 pub mod corporate_actor;
 pub mod smarter_actor;
 pub mod scripted_actor;
+pub mod dummy_actor_1;
 
 use messages::*;
 use market::*;
@@ -19,6 +20,7 @@ use actor::*;
 use corporate_actor::*;
 use smarter_actor::*;
 use scripted_actor::*;
+use dummy_actor_1::*;
 
 fn main() {
   //tx: clone for actors        rx: owned by market
@@ -50,7 +52,7 @@ fn main() {
     Thread::spawn(move || {start_actor(current_id, m, actor_tx, actor_rx);});
     current_id += 1;
   }
-  
+
   for _ in 0..corporate_actor_count {
     let m = markets.clone();
     Thread::spawn(move || {start_corporate_actor(current_id, m, 0, 100);});//start a corporate actor with 100 of stock 0
